@@ -1,8 +1,12 @@
-// Cliente minimo para Google AI Studio (Gemini). Modelo elegido: gemini-3.5-flash
-// (nivel gratuito "Standard" al 2026-09-01, ver CLAUDE.md seccion 13 — revisar si
-// Google cambia el catalogo gratuito).
+// Cliente minimo para Google AI Studio (Gemini). Modelo elegido: gemini-3.5-flash-lite
+// (ver CLAUDE.md seccion 13 para el historial: gemini-3.5-flash tiene cuota gratuita
+// muy chica en preview -- 20 req/dia, 5/min, medido el 2026-09-01 --, y gemini-2.5-flash
+// ya no esta disponible para cuentas nuevas de Google AI Studio).
 
-const MODEL = 'gemini-3.5-flash';
+import { conReintentos } from './retry.js';
+import { parsearJSONDeLLM } from './json.js';
+
+const MODEL = 'gemini-3.5-flash-lite';
 
 export async function extraerPartidosConGemini(textoFuente, fecha, torneoNombre) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -10,28 +14,28 @@ export async function extraerPartidosConGemini(textoFuente, fecha, torneoNombre)
 
   const prompt = buildPrompt(textoFuente, fecha, torneoNombre);
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0 },
-      }),
+  const data = await conReintentos(async () => {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+        }),
+      }
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Gemini ${res.status}: ${body}`);
     }
-  );
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Gemini ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
+    return res.json();
+  });
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error(`Respuesta de Gemini sin contenido: ${JSON.stringify(data)}`);
 
-  const parsed = JSON.parse(text);
+  const parsed = parsearJSONDeLLM(text);
   return Array.isArray(parsed.partidos) ? parsed.partidos : [];
 }
 

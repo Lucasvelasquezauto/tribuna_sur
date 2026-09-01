@@ -11,6 +11,20 @@ import { slugify, bogotaDateStr } from './lib/slugify.js';
 import { fetchAsText } from './lib/html-to-text.js';
 import { extraerPartidosConGemini } from './lib/gemini.js';
 import { extraerPartidosConOpenRouter } from './lib/openrouter.js';
+import { buscarPostsDimayor } from './lib/dimayor-discovery.js';
+
+// dimayor.com.co/category/programacion/ es un indice, no trae el detalle de los
+// partidos -- se resuelve via la API de busqueda de WordPress a varios posts
+// candidatos, y se prueban en orden de mas reciente a mas antiguo.
+const ES_INDICE_DIMAYOR = (url) => url.includes('dimayor.com.co/category/programacion');
+
+/** Para una fuente registrada, devuelve la lista de URLs candidatas a intentar en orden. */
+async function candidatosParaFuente(fuente, torneoNombre) {
+  if (!ES_INDICE_DIMAYOR(fuente.url)) return [fuente.url];
+  const posts = await buscarPostsDimayor(torneoNombre);
+  if (posts.length === 0) console.log('[fetch-ia] busqueda en dimayor.com.co sin resultados para este torneo');
+  return posts.map((p) => p.url);
+}
 
 // Asignacion de proveedor por grupo de torneos (CLAUDE.md seccion 6).
 const PROVEEDOR_POR_TORNEO = {
@@ -69,16 +83,28 @@ async function main() {
   let partidosExtraidos = [];
   let ultimoError = null;
 
-  for (const fuente of fuentes) {
+  fuentesLoop: for (const fuente of fuentes) {
+    console.log(`[fetch-ia] intentando fuente (prioridad ${fuente.prioridad}): ${fuente.url}`);
+    let candidatos;
     try {
-      console.log(`[fetch-ia] intentando fuente (prioridad ${fuente.prioridad}): ${fuente.url}`);
-      const texto = await fetchAsText(fuente.url);
-      partidosExtraidos = await extraer(texto, fecha, torneo.nombre);
-      console.log(`[fetch-ia] ${partidosExtraidos.length} partido(s) extraidos de esta fuente`);
-      if (partidosExtraidos.length > 0) break; // encontro datos, no hace falta probar la siguiente fuente
+      candidatos = await candidatosParaFuente(fuente, torneo.nombre);
     } catch (err) {
       ultimoError = err;
-      console.error(`[fetch-ia] fuente ${fuente.url} fallo:`, err.message);
+      console.error(`[fetch-ia] no se pudo resolver candidatos para ${fuente.url}:`, err.message);
+      continue;
+    }
+
+    for (const url of candidatos) {
+      try {
+        if (url !== fuente.url) console.log(`[fetch-ia]   probando candidato: ${url}`);
+        const texto = await fetchAsText(url);
+        partidosExtraidos = await extraer(texto, fecha, torneo.nombre);
+        console.log(`[fetch-ia]   ${partidosExtraidos.length} partido(s) extraidos`);
+        if (partidosExtraidos.length > 0) break fuentesLoop; // encontro datos, no hace falta seguir probando
+      } catch (err) {
+        ultimoError = err;
+        console.error(`[fetch-ia]   ${url} fallo:`, err.message);
+      }
     }
   }
 

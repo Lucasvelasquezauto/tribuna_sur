@@ -46,3 +46,19 @@ export async function upsert(table, rows, onConflict) {
 export async function select(table, query) {
   return restRequest(`${table}?${query}`, { method: 'GET' });
 }
+
+/**
+ * Actualiza columnas parciales de filas existentes que cumplan `filtro`
+ * (query string estilo PostgREST, ej. "id=eq.1"). A diferencia de `upsert`
+ * (que es un INSERT ... ON CONFLICT y por eso exige que el payload incluya
+ * todas las columnas NOT NULL de la tabla, aunque la fila ya exista), esto es
+ * un PATCH real -- sirve para tocar un solo campo como `canal` sin arrastrar
+ * el resto de la fila.
+ */
+export async function patch(table, filtro, cambios) {
+  return restRequest(`${table}?${filtro}`, {
+    method: 'PATCH',
+    body: cambios,
+    prefer: 'return=minimal',
+  });
+}
