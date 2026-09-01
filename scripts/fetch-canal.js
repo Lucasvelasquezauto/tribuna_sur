@@ -12,15 +12,9 @@ import { bogotaDateStr } from './lib/slugify.js';
 import { fetchAsText } from './lib/html-to-text.js';
 import { extraerPartidosConGemini } from './lib/gemini.js';
 import { encontrarEquipoId } from './lib/match-equipo.js';
+import { esEjecucionDirecta } from './lib/cli.js';
 
-async function main() {
-  const torneoSlug = process.argv[2];
-  if (!torneoSlug) {
-    console.error('Uso: node scripts/fetch-canal.js <slug-del-torneo> [YYYY-MM-DD]');
-    process.exit(1);
-  }
-  const fecha = process.argv[3] || bogotaDateStr(new Date());
-
+export async function fetchCanal(torneoSlug, fecha = bogotaDateStr(new Date())) {
   const [torneo] = await select('torneos', `select=id,nombre,slug,fuente_tipo&slug=eq.${torneoSlug}`);
   if (!torneo) throw new Error(`Torneo "${torneoSlug}" no existe en la tabla torneos`);
   if (torneo.fuente_tipo !== 'api_estructurada') {
@@ -82,9 +76,17 @@ async function main() {
   }
 
   console.log(`[fetch-canal] listo. ${actualizados}/${partidosExistentes.length} partido(s) con canal actualizado`);
+  return actualizados;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (esEjecucionDirecta(import.meta.url)) {
+  const torneoSlug = process.argv[2];
+  if (!torneoSlug) {
+    console.error('Uso: node scripts/fetch-canal.js <slug-del-torneo> [YYYY-MM-DD]');
+    process.exit(1);
+  }
+  fetchCanal(torneoSlug, process.argv[3] || bogotaDateStr(new Date())).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

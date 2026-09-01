@@ -12,6 +12,7 @@ import { fetchAsText } from './lib/html-to-text.js';
 import { extraerPartidosConGemini } from './lib/gemini.js';
 import { extraerPartidosConOpenRouter } from './lib/openrouter.js';
 import { buscarPostsDimayor } from './lib/dimayor-discovery.js';
+import { esEjecucionDirecta } from './lib/cli.js';
 
 // dimayor.com.co/category/programacion/ es un indice, no trae el detalle de los
 // partidos -- se resuelve via la API de busqueda de WordPress a varios posts
@@ -52,14 +53,7 @@ async function marcarFetchJob(torneoId, fecha, estado) {
   );
 }
 
-async function main() {
-  const torneoSlug = process.argv[2];
-  if (!torneoSlug) {
-    console.error('Uso: node scripts/fetch-ia.js <slug-del-torneo> [YYYY-MM-DD]');
-    process.exit(1);
-  }
-  const fecha = process.argv[3] || bogotaDateStr(new Date());
-
+export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
   const proveedor = PROVEEDOR_POR_TORNEO[torneoSlug];
   if (!proveedor) {
     throw new Error(
@@ -150,9 +144,17 @@ async function main() {
   await upsert('partidos', filas, 'torneo_id,equipo_local_id,equipo_visitante_id,fecha');
   await marcarFetchJob(torneo.id, fecha, 'listo');
   console.log(`[fetch-ia] listo. ${filas.length} partido(s) guardado(s) para ${torneoSlug} (${fecha})`);
+  return filas.length;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (esEjecucionDirecta(import.meta.url)) {
+  const torneoSlug = process.argv[2];
+  if (!torneoSlug) {
+    console.error('Uso: node scripts/fetch-ia.js <slug-del-torneo> [YYYY-MM-DD]');
+    process.exit(1);
+  }
+  fetchIa(torneoSlug, process.argv[3] || bogotaDateStr(new Date())).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

@@ -7,6 +7,7 @@
 
 import { upsert, select } from './lib/supabase.js';
 import { slugify, bogotaDateStr, bogotaTimeStr } from './lib/slugify.js';
+import { esEjecucionDirecta } from './lib/cli.js';
 
 const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY;
 if (!FOOTBALL_DATA_API_KEY) throw new Error('Falta FOOTBALL_DATA_API_KEY');
@@ -51,15 +52,21 @@ async function upsertEquipo(nombre) {
   return row.id;
 }
 
-async function main() {
-  const fecha = targetDate();
+/**
+ * Trae fixtures/resultados de football-data.org para `fecha` (America/Bogota).
+ * `soloSlugs`: si se pasa, limita a esos torneos (usado por el job de cierre
+ * para re-consultar solo el torneo que tiene un partido pendiente de cerrar,
+ * sin gastar cuota en los otros 3).
+ */
+export async function fetchFootballData(fecha, { soloSlugs } = {}) {
   const dateFrom = fecha;
   const dateTo = addDaysStr(fecha, 1); // cubre el desfase UTC-5 (partido tarde UTC = mismo dia Bogota siguiente)
 
-  const torneos = await select(
+  let torneos = await select(
     'torneos',
     `select=id,slug,fuente_api_id_externo&fuente_api=eq.football-data`
   );
+  if (soloSlugs) torneos = torneos.filter((t) => soloSlugs.includes(t.slug));
 
   console.log(`[fetch-football-data] fecha=${fecha} torneos=${torneos.map((t) => t.slug).join(',')}`);
 
@@ -117,9 +124,12 @@ async function main() {
   }
 
   console.log(`[fetch-football-data] listo. total partidos guardados: ${totalPartidos}`);
+  return totalPartidos;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (esEjecucionDirecta(import.meta.url)) {
+  fetchFootballData(targetDate()).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
