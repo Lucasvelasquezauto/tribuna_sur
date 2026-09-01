@@ -1,0 +1,11 @@
+{
+  "name": "tribuna-sur",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "fetch:football-data": "node scripts/fetch-football-data.js"
+  }
+}
