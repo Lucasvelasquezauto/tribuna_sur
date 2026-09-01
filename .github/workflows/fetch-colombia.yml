@@ -1,0 +1,38 @@
+name: Fetch Colombia (Liga/Copa/Torneo Betplay)
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # 02:00 America/Bogota (UTC-5)
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # continue-on-error en cada paso: si un torneo falla (fuente caida, cuota
+      # agotada, etc.) no debe bloquear a los otros dos. Ver CLAUDE.md seccion 10.
+      - name: Liga Betplay
+        continue-on-error: true
+        run: node scripts/fetch-ia.js liga-betplay
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Copa Betplay
+        continue-on-error: true
+        run: node scripts/fetch-ia.js copa-betplay
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Torneo Betplay
+        continue-on-error: true
+        run: node scripts/fetch-ia.js torneo-betplay
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

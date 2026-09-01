@@ -1,0 +1,33 @@
+name: Cierre de resultados
+
+# Corre cada hora dentro de una ventana horaria amplia que cubre los horarios
+# tipicos de partidos en Colombia (America/Bogota 07:00-23:00 => UTC 12:00-04:00
+# del dia siguiente). CLAUDE.md seccion 8 deja este cron como "variable" (a
+# diferencia de los otros 4 jobs, que tienen hora fija) -- el minuto 7 (no :00)
+# es a proposito, para no competir con la franja de minuto 0 que usan miles de
+# workflows en GitHub a la vez.
+#
+# El script mismo decide si hay algo que hacer: si ningun partido de hoy sigue
+# 'programado' con la hora + 2h ya pasada, no llama a ninguna fuente externa
+# (ver scripts/cierre-resultados.js).
+
+on:
+  schedule:
+    - cron: '7 12-23,0-4 * * *'
+  workflow_dispatch:
+
+jobs:
+  cierre:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node scripts/cierre-resultados.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}

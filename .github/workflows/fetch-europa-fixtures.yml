@@ -1,0 +1,21 @@
+name: Fetch Europa (fixtures football-data.org)
+
+on:
+  schedule:
+    - cron: '0 9 * * *' # 04:00 America/Bogota (UTC-5)
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Champions League, Premier League, LaLiga, Bundesliga
+        run: node scripts/fetch-football-data.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
