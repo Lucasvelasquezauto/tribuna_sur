@@ -1,0 +1,336 @@
+# Especificación técnica y plan de construcción — App de partidos del día
+
+**Estado:** listo para iniciar desarrollo (MVP)
+**Audiencia de este documento:** un desarrollador que construirá la app y no participó en la definición del producto. Este documento debe bastar por sí solo — no asume contexto previo.
+
+---
+
+## 1. Contexto y objetivo del producto
+
+Es una aplicación web personal (sin fines de lucro, presupuesto de desarrollo y operación de **$0**) para que el usuario sepa, cada día, qué partidos de fútbol puede ver: a qué hora juegan los que faltan, qué resultado tuvieron los que ya terminaron, y en qué canal o plataforma de streaming se transmiten.
+
+El usuario principal está en Colombia (zona horaria **America/Bogotá, UTC-5**), y ese es el mercado que importa para el dato de "canal de transmisión" — es información que ninguna API deportiva internacional resuelve bien, y es el motivo por el cual buena parte de la arquitectura gira en torno a conseguir ese dato específico, no solo resultados.
+
+## 2. Alcance funcional (qué debe hacer la app)
+
+### 2.1 Torneos
+
+Por defecto, la app muestra partidos de tres torneos:
+
+- Liga Betplay
+- Copa Betplay
+- Champions League (UEFA Champions League)
+
+El usuario puede desmarcar cualquiera de esos tres, y puede además activar cualquiera de estos torneos adicionales:
+
+- Torneo Betplay
+- UEFA Europa League
+- Bundesliga
+- Premier League
+- LaLiga
+- Copa Libertadores
+- Copa Sudamericana
+
+### 2.2 Equipos favoritos
+
+El usuario puede marcar uno o más equipos como favoritos. Un equipo favorito se debe poder seguir **en cualquier torneo en el que participe** (por ejemplo, si Millonarios juega Liga Betplay y también Copa Libertadores, ambos partidos deben aparecer al filtrar por ese equipo), independientemente de si ese torneo está o no seleccionado en la vista general.
+
+### 2.3 Vista de partidos del día
+
+Para una fecha dada (por defecto, hoy; el usuario puede elegir otra fecha), la app muestra, agrupados por torneo:
+
+- Si el partido ya se jugó: el resultado final (marcador).
+- Si el partido no se ha jugado: la hora de inicio (en hora de Bogotá).
+- En ambos casos: el canal de TV o plataforma de streaming donde se transmite (o se transmitió).
+
+No se requiere marcador en vivo minuto a minuto — el requisito es "resultado final una vez terminó", no seguimiento en tiempo real del partido en curso.
+
+## 3. Restricciones no negociables del proyecto
+
+Estas restricciones vienen de decisiones explícitas del dueño del producto y condicionan toda la arquitectura:
+
+1. **Presupuesto $0**, no solo para APIs de datos deportivos sino para todo: hosting, base de datos, motores de IA. Todo debe vivir dentro de niveles gratuitos reales, no pruebas gratuitas que luego cobran.
+2. **Ningún servicio debe tener un método de pago vinculado** (ni tarjeta ni facturación activada), en ningún proveedor. Esto es intencional: mientras no haya tarjeta registrada, es *técnicamente imposible* que se genere un cobro — si se agota una cuota gratuita, la llamada simplemente falla (error, típicamente HTTP 429), nunca se cobra. Esta es la razón por la que se descartaron proveedores de IA que solo ofrecen crédito de prueba con tarjeta vinculada (ver sección 8).
+3. Motores de IA permitidos: **únicamente Gemini (Google AI Studio) y OpenRouter** (usando solo sus modelos gratuitos, sin agregar créditos). No usar DeepSeek, Qwen, ni ningún otro proveedor que exija vincular una tarjeta, aunque su tier gratuito parezca conveniente.
+4. Es un proyecto de un solo desarrollador (posiblemente asistido por IA en distintas sesiones). El documento y el código deben ser autoexplicativos, porque no hay equipo con quien aclarar dudas verbalmente.
+
+## 4. Arquitectura general
+
+Idea central: **una sola base de datos compartida es la fuente de verdad**, alimentada en segundo plano por varias fuentes distintas (APIs gratuitas + IA leyendo páginas específicas). El frontend nunca llama a una API deportiva ni a un modelo de IA directamente — solo lee de esa base de datos. Esto es clave para el presupuesto: sin importar cuántos usuarios usen la app, el número de consultas a las fuentes externas depende de cuántos *torneos distintos* están siendo seguidos, no de cuántos usuarios los consultan.
+
+```
+[Fuentes externas]                [Automatización]              [Almacenamiento]           [Frontend]
+football-data.org  ─┐
+(4 torneos europeos) │
+                      ├─► Jobs programados (cron) ─► Supabase (Postgres) ◄─── lee ─── App web
+Dimayor.co, ESPN,    │    en horarios escalonados      "partidos", "torneos",           (Vercel/Netlify,
+Conmebol, etc.  ─────┘    + Gemini / OpenRouter          "fuentes_por_torneo", etc.       plan gratuito)
+(vía extracción con IA)
+```
+
+Piezas:
+
+- **Base de datos**: Supabase (Postgres), plan gratuito.
+- **Automatización / obtención de datos**: jobs programados (recomendado: GitHub Actions, plan gratuito — 2000 minutos/mes) que corren en horarios escalonados y escriben a Supabase.
+- **Fuentes de datos**: una API estructurada gratuita donde exista cobertura real, y modelos de IA leyendo páginas fuente específicas donde no exista.
+- **Frontend**: aplicación web que lee directamente de Supabase (clave anónima, solo lectura) y no requiere backend propio corriendo 24/7.
+
+## 5. Fuentes de datos por torneo
+
+| Torneo | Fuente principal | Necesita IA | Notas |
+|---|---|---|---|
+| Champions League | football-data.org (API gratuita) | Solo para canal de TV en Colombia | La API da fixtures/resultados gratis pero no canal |
+| Premier League | football-data.org | Solo para canal | Ídem |
+| LaLiga | football-data.org | Solo para canal | Ídem |
+| Bundesliga | football-data.org | Solo para canal | Ídem |
+| UEFA Europa League | Sin API gratuita confirmada | Sí, completo | Definir fuente exacta (candidata: UEFA.com, ESPN) |
+| Liga Betplay | Sin API gratuita | Sí, completo | Fuente candidata: **dimayor.com.co** |
+| Copa Betplay | Sin API gratuita | Sí, completo | Fuente candidata: dimayor.com.co |
+| Torneo Betplay | Sin API gratuita | Sí, completo | Fuente candidata: dimayor.com.co |
+| Copa Libertadores | Sin API gratuita | Sí, completo | Fuente candidata: **conmebol.com** o ESPN |
+| Copa Sudamericana | Sin API gratuita | Sí, completo | Fuente candidata: conmebol.com o ESPN |
+
+**football-data.org** (plan gratuito, sin tarjeta): 10 solicitudes/minuto, cubre Champions League, Premier League, LaLiga y Bundesliga con fixtures y resultados (el marcador puede llegar algo retrasado respecto al tiempo real, lo cual no es un problema dado el requisito de la sección 2.3). No incluye canal de transmisión para ningún torneo — ese dato siempre se obtiene vía IA, incluso para los torneos europeos.
+
+**Nota importante para el desarrollador**: las URLs de "fuente candidata" arriba deben confirmarse y ajustarse durante la Fase 2 (sección 11) — hay que verificar en qué página exacta de cada sitio aparece la programación de canal por fecha, y si esa página lista todos los partidos del día o hay que armar la URL por equipo/fecha.
+
+## 6. Cómo se usa la IA (esto no es "buscar en internet")
+
+Error a evitar: pedirle a un modelo que "busque en internet y responda" (grounding abierto) es más propenso a inventar datos. En su lugar, el patrón a implementar es:
+
+1. El job descarga el HTML (o texto) de la URL específica registrada para ese torneo (tabla `fuentes_por_torneo`, sección 7).
+2. Se limpia ese HTML a texto plano (quitar scripts, menús, etc. — no hace falta ser exhaustivo, el modelo tolera ruido razonable).
+3. Se le pasa ese texto al modelo con una instrucción fija pidiendo que devuelva **únicamente** un JSON con este esquema, sin explicaciones adicionales:
+
+```json
+{
+  "partidos": [
+    {
+      "equipo_local": "string",
+      "equipo_visitante": "string",
+      "hora_local_bogota": "HH:MM o null si ya se jugó",
+      "estado": "programado | finalizado | pospuesto",
+      "marcador_local": "number o null",
+      "marcador_visitante": "number o null",
+      "canal": "string o null si no se encontró"
+    }
+  ]
+}
+```
+
+4. El resultado se guarda en la tabla `partidos` (sección 7), marcando la fila con `fuente = 'ia'` y `proveedor_ia = 'gemini' | 'openrouter'`.
+
+Esto es más confiable que un scraper con selectores CSS fijos (porque el modelo interpreta el contenido aunque cambie el diseño de la página) y más barato que usar la función de "grounding"/búsqueda de los proveedores (porque es una llamada de texto normal, sin la cuota aparte que tiene esa función).
+
+### Asignación de proveedor por grupo de torneos
+
+Para repartir el uso entre las dos cuotas gratuitas disponibles:
+
+- **Gemini**: Liga Betplay, Copa Betplay, Torneo Betplay.
+- **OpenRouter** (modelo gratuito, ej. un modelo de la familia GLM o similar disponible sin costo en el catálogo gratuito de OpenRouter — confirmar cuál está disponible al momento de implementar, la lista cambia): Copa Libertadores, Copa Sudamericana, UEFA Europa League.
+
+Con ~5 torneos usando IA y una consulta diaria por torneo, el uso real (~5 llamadas/día) está muy por debajo de cualquiera de las dos cuotas gratuitas, así que esta asignación es más por prolijidad que por necesidad estricta — pero conviene mantenerla para no depender de un solo proveedor.
+
+## 7. Modelo de datos (Supabase / Postgres)
+
+Para el MVP (sección 11), **no se requiere sistema de usuarios/login**. El proyecto tiene un solo usuario real al inicio; la selección de torneos y equipos favoritos se guarda en el navegador (localStorage), no en base de datos. Si en el futuro se comparte con más personas, ahí sí se justifica añadir Supabase Auth (su plan gratuito soporta hasta 50.000 usuarios activos/mes) y tablas de preferencias por usuario — no construir eso desde el día uno.
+
+Tablas necesarias desde el inicio:
+
+```sql
+-- Catálogo de torneos
+create table torneos (
+  id serial primary key,
+  nombre text not null,
+  slug text unique not null,          -- ej. 'liga-betplay'
+  activo_por_defecto boolean default false,
+  fuente_tipo text not null,          -- 'api_estructurada' | 'ia'
+  fuente_api text,                    -- ej. 'football-data', null si es vía IA
+  fuente_api_id_externo text          -- id del torneo en esa API, si aplica
+);
+
+-- Equipos (uno por nombre, sin duplicar por torneo)
+create table equipos (
+  id serial primary key,
+  nombre text not null,
+  slug text unique not null
+);
+
+-- Relación equipo-torneo (un equipo puede estar en varios torneos, ej. Copa Libertadores + liga local)
+create table equipos_torneos (
+  equipo_id int references equipos(id),
+  torneo_id int references torneos(id),
+  primary key (equipo_id, torneo_id)
+);
+
+-- Registro de dónde buscar información de cada torneo cuando la fuente es IA
+create table fuentes_por_torneo (
+  id serial primary key,
+  torneo_id int references torneos(id),
+  url text not null,
+  prioridad int default 1,            -- si hay varias, se intentan en orden
+  activo boolean default true
+);
+
+-- Partidos: la tabla central que consulta el frontend
+create table partidos (
+  id serial primary key,
+  torneo_id int references torneos(id),
+  equipo_local_id int references equipos(id),
+  equipo_visitante_id int references equipos(id),
+  fecha date not null,
+  hora_local time,                    -- null si aún no se confirma
+  estado text not null default 'programado', -- 'programado' | 'finalizado' | 'pospuesto'
+  marcador_local int,
+  marcador_visitante int,
+  canal text,
+  fuente text not null,               -- 'football-data' | 'ia'
+  proveedor_ia text,                  -- 'gemini' | 'openrouter' | null
+  confianza text default 'sin_confirmar', -- 'confirmado' | 'sin_confirmar'
+  actualizado_en timestamptz default now(),
+  unique (torneo_id, equipo_local_id, equipo_visitante_id, fecha)
+);
+
+-- Evita disparar la misma búsqueda dos veces en paralelo
+create table fetch_jobs (
+  id serial primary key,
+  torneo_id int references torneos(id),
+  fecha date not null,
+  estado text not null default 'pendiente', -- 'pendiente' | 'en_curso' | 'listo' | 'error'
+  creado_en timestamptz default now(),
+  actualizado_en timestamptz default now(),
+  unique (torneo_id, fecha)
+);
+
+-- Correcciones manuales que sobrescriben lo obtenido automáticamente
+create table overrides_manuales (
+  id serial primary key,
+  partido_id int references partidos(id),
+  campo text not null,                -- 'canal', 'hora_local', etc.
+  valor text not null,
+  motivo text,
+  creado_en timestamptz default now()
+);
+```
+
+Notas de diseño:
+
+- `confianza = 'confirmado'` se marca cuando el mismo partido tiene datos coincidentes de dos fuentes independientes (ej. hora confirmada por football-data.org y canal confirmado por IA). En el resto de casos queda `'sin_confirmar'` y el frontend puede mostrarlo con un indicador visual sutil.
+- Un registro en `overrides_manuales` debe aplicarse por encima de lo que diga `partidos` al momento de mostrarlo — permite corregir un dato erróneo una vez y que la corrección beneficie a todos los que vean ese partido.
+- La restricción `unique` en `partidos` evita duplicados si el mismo torneo se vuelve a consultar el mismo día.
+
+## 8. Automatización: cronograma escalonado
+
+Los jobs corren en horarios de madrugada (hora de Bogotá) para no competir entre sí, ser respetuosos con los sitios fuente, y tener todo listo antes de que cualquier usuario abra la app en la mañana. **Importante:** si se implementa con GitHub Actions, los horarios de cron se definen en UTC, no en hora de Bogotá (Bogotá = UTC-5, así que sumar 5 horas a la hora local para obtener la hora UTC).
+
+| Hora Bogotá | Hora UTC (cron) | Qué hace | Fuente / proveedor |
+|---|---|---|---|
+| 02:00 | `0 7 * * *` | Programación + canal de Liga Betplay, Copa Betplay, Torneo Betplay | Dimayor.com.co vía Gemini |
+| 03:00 | `0 8 * * *` | Programación + canal de Copa Libertadores, Copa Sudamericana, Europa League | ESPN/Conmebol vía OpenRouter |
+| 04:00 | `0 9 * * *` | Fixtures + resultados de Champions League, Premier League, LaLiga, Bundesliga | football-data.org (sin IA) |
+| 04:30 | `30 9 * * *` | Canal de TV para los 4 torneos anteriores | Fuente por definir vía Gemini u OpenRouter |
+| Cada hora, solo si hay partidos ese día según el fetch de la madrugada, entre las 2 horas antes y 3 horas después del rango de horarios del día | variable | "Cierre" de resultados: para partidos cuya hora + ~2h ya pasó y siguen en estado `programado`, volver a consultar la fuente correspondiente y actualizar a `finalizado` con marcador | La misma fuente que trajo ese torneo |
+
+El job de "cierre" es el único que corre más de una vez al día, y **solo se activa si el fetch de la madrugada encontró partidos para ese torneo en esa fecha** — la mayoría de los días, para la mayoría de los torneos, no habrá nada que cerrar, así que el volumen real de llamadas es bajo incluso contando esto.
+
+**Mantener Supabase activo**: el proyecto gratuito de Supabase se pausa automáticamente tras 7 días sin recibir solicitudes a la base de datos, y reactivarlo requiere entrar manualmente al panel. Como los jobs de arriba corren todos los días, esto ya resuelve el problema como efecto colateral — no hace falta un job adicional solo para esto, pero si en algún momento se reduce la frecuencia de los jobs por debajo de una vez por semana, hay que añadir un ping trivial (ej. un `select count(*) from torneos`) para evitar la pausa.
+
+## 9. Frontend
+
+No hubo una decisión cerrada sobre el framework exacto; se sugiere lo siguiente por simplicidad y costo (a confirmar con el desarrollador):
+
+- Aplicación web simple (React + Vite, o incluso HTML/JS plano si se prefiere minimizar dependencias), desplegada en un plan gratuito de Vercel, Netlify o Cloudflare Pages.
+- Se conecta directamente a Supabase usando la clave pública "anon" (solo lectura) — no necesita backend propio.
+- Pantalla principal: selector de fecha (hoy por defecto), lista de partidos agrupada por torneo, mostrando hora o marcador según `estado`, y el campo `canal`.
+- Panel de configuración: checklist de torneos activos (los 3 por defecto ya marcados), y buscador/selector de equipos favoritos. Ambos se guardan en `localStorage` del navegador — no en Supabase, para el MVP.
+- Vista de favoritos: filtra `partidos` por los equipos guardados en `localStorage`, sin importar el torneo (usa la tabla `equipos_torneos` para saber en qué torneos participa cada equipo favorito, y trae esos partidos aunque el torneo no esté "activo" en la vista general).
+
+## 10. Riesgos conocidos y cómo se mitigan
+
+- **Los proveedores de IA pueden reducir su cuota gratuita sin aviso** (ya ha pasado con Gemini). Mitigación: el volumen real de uso (~10-15 llamadas/día) deja mucho margen; si un proveedor reduce su cuota, basta con bajar la frecuencia de ese torneo específico a "solo mañana" sin el job de cierre intradía.
+- **Cambios de diseño en las páginas fuente** (Dimayor, ESPN, etc.) pueden hacer que el texto extraído ya no tenga la información esperada. Mitigación: al usar un modelo de IA para interpretar el texto (en vez de selectores CSS fijos), la extracción es más resistente a estos cambios, pero conviene una revisión visual ocasional (ej. una vez al mes) comparando lo guardado contra la página real.
+- **Un canal puede cambiar de última hora** (ya anunciado el canal, se cambia el mismo día). El fetch de madrugada no captura eso. Mitigación aceptada para el MVP: es una limitación conocida; se puede agregar más adelante un botón de "actualizar este partido" que dispare una consulta puntual.
+- **Pausa de Supabase por inactividad** — cubierta en la sección 8.
+
+## 11. Plan por etapas: entregables y verificación
+
+### Fase 0 — Cuentas y accesos (sin código)
+
+**Qué hacer:** crear cuenta de Supabase (proyecto nuevo), obtener API key de Gemini en Google AI Studio, crear cuenta en OpenRouter, crear el repositorio en GitHub (para el código y los workflows de automatización).
+
+**Entregable:** credenciales guardadas como variables de entorno / secrets del repositorio (nunca en el código).
+
+**Verificación:** entrar a cada plataforma (Google AI Studio, OpenRouter, Supabase) y confirmar explícitamente que no hay ningún método de pago ni facturación vinculada a la cuenta. Esto es una restricción de producto, no un detalle técnico — debe verificarse antes de seguir.
+
+### Fase 1 — Esquema de base de datos
+
+**Qué hacer:** crear las tablas de la sección 7 en Supabase. Poblar `torneos` con los 8 torneos (marcando los 3 por defecto). Investigar y poblar `fuentes_por_torneo` con URLs reales confirmadas (no las "candidatas" de la sección 5 sin verificar).
+
+**Entregable:** script SQL de migración + datos semilla, ejecutado sobre el proyecto de Supabase.
+
+**Verificación:** consultar cada tabla desde el editor SQL de Supabase y confirmar que existen los 8 torneos con su `fuente_tipo` correcto, y que `fuentes_por_torneo` tiene al menos una URL por torneo que use IA.
+
+### Fase 2 — Fuente estructurada (football-data.org)
+
+**Qué hacer:** registrar la API key gratuita, escribir el script que trae fixtures/resultados de los 4 torneos cubiertos para la fecha indicada y los inserta/actualiza en `partidos`.
+
+**Entregable:** script funcional, corrido manualmente al menos una vez con datos reales.
+
+**Verificación:** comparar manualmente 2-3 partidos guardados en `partidos` contra una búsqueda directa ("resultados Champions League hoy") y confirmar que hora y marcador coinciden.
+
+### Fase 3 — Extracción vía IA (un torneo primero)
+
+**Qué hacer:** implementar el flujo completo descrito en la sección 6 (descargar HTML de la fuente → limpiar a texto → pedir JSON al modelo → guardar en `partidos`) para **Liga Betplay** como primer caso, usando Gemini.
+
+**Entregable:** script funcional con al menos una corrida exitosa mostrando partidos reales de Liga Betplay con canal.
+
+**Verificación:** abrir manualmente la página fuente (Dimayor u otra confirmada) y comparar contra lo guardado — hora, equipos y canal deben coincidir.
+
+### Fase 4 — Extender a los demás torneos vía IA
+
+**Qué hacer:** replicar el flujo de la Fase 3 para Copa Betplay, Torneo Betplay (con Gemini), y Copa Libertadores, Copa Sudamericana, Europa League (con OpenRouter). Implementar el job de canal para los 4 torneos europeos que cubre football-data.org.
+
+**Entregable:** los 8 torneos con datos completos (hora/resultado + canal) en al menos una corrida manual cada uno.
+
+**Verificación:** igual que la Fase 3, pero repetido para cada torneo nuevo.
+
+### Fase 5 — Automatización (GitHub Actions)
+
+**Qué hacer:** crear los workflows con el cronograma de la sección 8 (horarios en UTC), incluyendo el job de "cierre" de resultados condicionado a si hubo partidos ese día.
+
+**Entregable:** workflows corriendo automáticamente, visibles en la pestaña "Actions" del repositorio, durante al menos 3-5 días sin intervención manual.
+
+**Verificación:** revisar los logs de cada ejecución (éxito/error) y confirmar que la tabla `partidos` se actualiza sola cada día, sin correr nada a mano.
+
+### Fase 6 — Frontend MVP
+
+**Qué hacer:** construir la vista principal, el selector de torneos y la gestión de equipos favoritos, tal como se describe en la sección 9.
+
+**Entregable:** app desplegada con URL pública (plan gratuito de Vercel/Netlify/Cloudflare Pages).
+
+**Verificación:** abrir la app en un día con partidos reales de al menos 2 torneos distintos y confirmar que la información mostrada coincide con lo verificado en las Fases 2-4. Probar: desmarcar un torneo por defecto, activar uno adicional, marcar un equipo favorito, recargar la página y confirmar que las preferencias persisten (localStorage).
+
+### Fase 7 — Confiabilidad
+
+**Qué hacer:** implementar el campo `confianza` (marcar `confirmado` cuando dos fuentes coincidan en un mismo partido) y la tabla `overrides_manuales`, y su efecto en lo que se muestra en el frontend.
+
+**Entregable:** ambos mecanismos funcionando, con un ejemplo documentado de cada uno.
+
+**Verificación:** forzar manualmente un dato incorrecto en `partidos`, crear un override para corregirlo, y confirmar que la app muestra el valor corregido en vez del original.
+
+## 12. Decisiones abiertas para el desarrollador
+
+Estos puntos no quedaron cerrados en la definición del producto y deben resolverse durante la implementación:
+
+- URLs exactas de fuente para cada torneo vía IA (las de la sección 5 son candidatas, no confirmadas).
+- Framework exacto de frontend (se sugiere React + Vite, pero no es una decisión firme).
+- Nombre y branding de la app (no definido).
+- Modelo gratuito específico de OpenRouter a usar (el catálogo de modelos gratuitos cambia; verificar disponibilidad al momento de implementar).
+- Si en algún momento se agregan más países/usuarios, decidir ahí si se justifica añadir Supabase Auth y preferencias por usuario en base de datos (para el MVP, se guardan en el navegador).
+
+## 13. Registro de decisiones tomadas durante la implementación
+
+Decisiones que no estaban explícitas en el documento original (sección 12) y que se fueron resolviendo durante el desarrollo. Se documentan aquí para que queden como referencia permanente.
+
+- **2026-09-01 — Nombre de la app:** "Tribuna Sur". Definido por el dueño del producto.
+- **2026-09-01 — Hosting de código y CI:** repositorio en GitHub, cuenta del dueño del producto. Deploy del frontend en Vercel (cuenta del dueño del producto, ya conectada). Ambos sin método de pago vinculado, plan gratuito.
