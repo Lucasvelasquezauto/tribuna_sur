@@ -1,8 +1,18 @@
 name: Fetch Colombia (Liga/Copa Betplay)
 
+# Corre lunes/miercoles/viernes (no a diario): un barrido de 14 dias todos
+# los dias se pasaria del limite gratis de Tavily (1000 creditos/mes --
+# 15 fechas x 2 torneos x 2 creditos x 30 dias = 1800). 3 veces por semana
+# deja el uso en ~800/mes, con margen para cierre-resultados.yml (que si
+# corre a diario, pero solo para CERRAR partidos ya conocidos, no para
+# descubrir nuevos). Ver CLAUDE.md seccion 13, decision del usuario
+# 2026-09-02: "hoy" puede quedar hasta ~2-3 dias sin refrescar en el peor
+# caso (ej. un partido nuevo anunciado un martes no se descubre hasta el
+# miercoles) -- tradeoff aceptado a cambio de mantener 14 dias de ventana
+# hacia adelante para favoritos.
 on:
   schedule:
-    - cron: '0 7 * * *' # 02:00 America/Bogota (UTC-5)
+    - cron: '0 7 * * 1,3,5' # 02:00 America/Bogota (UTC-5), lunes/miercoles/viernes
   workflow_dispatch:
 
 jobs:
@@ -21,33 +31,30 @@ jobs:
       # candidato de respaldo dentro de fetch-ia.js, aunque en la practica
       # solo sirve corriendolo local/manualmente por el bloqueo de IP.
       - run: npx playwright install --with-deps chromium
-      # Se corre para HOY + los proximos dias (no solo hoy): antes esto era
-      # el motivo por el que la ventana de favoritos (public/app.js) no
-      # podia mostrar partidos futuros con confianza -- colombia.com solo
-      # cubre ~2-3 dias y no se consultaba mas alla de hoy. Con Tavily
-      # buscando por fecha especifica, se puede rellenar la ventana de
-      # verdad. `|| true` por fecha: si una fecha puntual falla (sin
+      # Se corre para HOY + los proximos 13 dias (14 fechas en total), para
+      # que la ventana de favoritos (public/app.js, +-14 dias) tenga datos
+      # reales detras. `|| true` por fecha: si una fecha puntual falla (sin
       # partidos, error transitorio), no debe frenar las demas.
-      - name: Liga Betplay (hoy + proximos 7 dias)
+      - name: Liga Betplay (hoy + proximos 13 dias)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
         run: |
-          for i in 0 1 2 3 4 5 6 7; do
+          for i in $(seq 0 13); do
             fecha=$(date -u -d "+${i} days" +%F)
             echo "--- liga-betplay ${fecha} ---"
             node scripts/fetch-ia.js liga-betplay "${fecha}" || echo "fallo liga-betplay ${fecha}, sigue con la siguiente fecha"
           done
-      - name: Copa Betplay (hoy + proximos 7 dias)
+      - name: Copa Betplay (hoy + proximos 13 dias)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
         run: |
-          for i in 0 1 2 3 4 5 6 7; do
+          for i in $(seq 0 13); do
             fecha=$(date -u -d "+${i} days" +%F)
             echo "--- copa-betplay ${fecha} ---"
             node scripts/fetch-ia.js copa-betplay "${fecha}" || echo "fallo copa-betplay ${fecha}, sigue con la siguiente fecha"

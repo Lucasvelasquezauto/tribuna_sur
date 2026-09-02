@@ -19,13 +19,12 @@ const state = {
 // filtrar dia por dia (decision del usuario, ver CLAUDE.md seccion 13).
 //
 // La ventana es asimetrica a proposito: hacia atras son resultados ya
-// confirmados en la BD (sin riesgo). Hacia adelante, el cron diario de
-// Liga/Copa Betplay (fetch-colombia.yml) busca activamente hoy + los
-// proximos 7 dias via Tavily (ver CLAUDE.md seccion 13, 2026-09-02) -- mas
-// alla de eso no hay datos que mostrar, asi que no tiene sentido una
-// ventana mas ancha que lo que el cron realmente cubre.
+// confirmados en la BD (sin riesgo). Hacia adelante, el cron de Liga/Copa
+// Betplay (fetch-colombia.yml) busca hoy + los proximos 13 dias via Tavily,
+// lunes/miercoles/viernes (no a diario, por presupuesto de creditos -- ver
+// CLAUDE.md seccion 13, 2026-09-02). 14 dias es lo que el cron cubre.
 const VENTANA_FAVORITOS_DIAS_ATRAS = 14;
-const VENTANA_FAVORITOS_DIAS_ADELANTE = 7;
+const VENTANA_FAVORITOS_DIAS_ADELANTE = 14;
 
 function bogotaHoy() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
