@@ -13,6 +13,12 @@ const state = {
   favoritos: [], // equipo ids
 };
 
+// "Mis favoritos" no usa el selector de fecha: siempre muestra una ventana
+// fija alrededor de hoy (ultimas y proximas semanas), porque lo util de un
+// favorito es ver como le fue la ultima vez y cuando juega la proxima, no
+// filtrar dia por dia (decision del usuario, ver CLAUDE.md seccion 13).
+const VENTANA_FAVORITOS_DIAS = 14;
+
 function bogotaHoy() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
 }
@@ -56,21 +62,27 @@ async function cargarCatalogos() {
 
 async function cargarPartidos() {
   const campos =
-    'id,hora_local,estado,marcador_local,marcador_visitante,canal,confianza,' +
+    'id,fecha,hora_local,estado,marcador_local,marcador_visitante,canal,confianza,' +
     'torneo:torneo_id(nombre,slug),' +
     'equipo_local:equipo_local_id(id,nombre),' +
     'equipo_visitante:equipo_visitante_id(id,nombre)';
 
-  let query = `partidos?select=${campos}&fecha=eq.${state.fecha}&order=hora_local.asc.nullslast`;
+  let query;
 
   if (state.vista === 'favoritos') {
     if (state.favoritos.length === 0) return [];
+    const hoy = bogotaHoy();
+    const desde = sumarDias(hoy, -VENTANA_FAVORITOS_DIAS);
+    const hasta = sumarDias(hoy, VENTANA_FAVORITOS_DIAS);
     const ids = state.favoritos.join(',');
-    query += `&or=(equipo_local_id.in.(${ids}),equipo_visitante_id.in.(${ids}))`;
+    query =
+      `partidos?select=${campos}&fecha=gte.${desde}&fecha=lte.${hasta}` +
+      `&order=fecha.asc,hora_local.asc.nullslast` +
+      `&or=(equipo_local_id.in.(${ids}),equipo_visitante_id.in.(${ids}))`;
   } else {
     const idsActivos = state.torneos.filter((t) => state.torneosActivos.includes(t.slug)).map((t) => t.id);
     if (idsActivos.length === 0) return [];
-    query += `&torneo_id=in.(${idsActivos.join(',')})`;
+    query = `partidos?select=${campos}&fecha=eq.${state.fecha}&order=hora_local.asc.nullslast&torneo_id=in.(${idsActivos.join(',')})`;
   }
 
   const partidos = await supabase.get(query);
@@ -117,6 +129,23 @@ function agruparPorTorneo(partidos) {
   return grupos;
 }
 
+function agruparPorFecha(partidos) {
+  const grupos = new Map(); // ya vienen ordenados por fecha desde la consulta
+  for (const p of partidos) {
+    if (!grupos.has(p.fecha)) grupos.set(p.fecha, []);
+    grupos.get(p.fecha).push(p);
+  }
+  return grupos;
+}
+
+function etiquetaFecha(fechaStr) {
+  const hoy = bogotaHoy();
+  if (fechaStr === hoy) return 'Hoy';
+  if (fechaStr === sumarDias(hoy, -1)) return 'Ayer';
+  if (fechaStr === sumarDias(hoy, 1)) return 'Mañana';
+  return formatearFechaLarga(fechaStr);
+}
+
 // ---------- Render ----------
 
 function esFavorito(equipoId) {
@@ -128,7 +157,7 @@ function renderEquipo(equipo) {
   return `<span class="equipo">${fav}${escapeHtml(equipo.nombre)}</span>`;
 }
 
-function renderPartidoCard(p) {
+function renderPartidoCard(p, { mostrarTorneo = false } = {}) {
   const centro =
     p.estado === 'finalizado'
       ? `<div class="marcador"><span>${p.marcador_local ?? '-'}</span><span class="separador">-</span><span>${p.marcador_visitante ?? '-'}</span></div>`
@@ -148,8 +177,11 @@ function renderPartidoCard(p) {
       ? '<span class="marca-sin-confirmar" title="Dato sin confirmar por una segunda fuente">&#9679;</span>'
       : '';
 
+  const torneoTag = mostrarTorneo ? `<div class="partido-torneo-tag">${escapeHtml(p.torneo.nombre)}</div>` : '';
+
   return `
     <li class="partido">
+      ${torneoTag}
       <div class="partido-equipos">
         ${renderEquipo(p.equipo_local)}
         ${centro}
@@ -164,7 +196,17 @@ function renderTorneoSeccion(nombreTorneo, partidos) {
     <section class="torneo-seccion">
       <h2 class="torneo-titulo">${escapeHtml(nombreTorneo)}</h2>
       <ul class="partidos-lista">
-        ${partidos.map(renderPartidoCard).join('')}
+        ${partidos.map((p) => renderPartidoCard(p)).join('')}
+      </ul>
+    </section>`;
+}
+
+function renderFechaSeccion(fechaStr, partidos) {
+  return `
+    <section class="torneo-seccion">
+      <h2 class="torneo-titulo${fechaStr === bogotaHoy() ? ' torneo-titulo-hoy' : ''}">${etiquetaFecha(fechaStr)}</h2>
+      <ul class="partidos-lista">
+        ${partidos.map((p) => renderPartidoCard(p, { mostrarTorneo: true })).join('')}
       </ul>
     </section>`;
 }
@@ -174,7 +216,7 @@ function renderEstadoVacio() {
     state.vista === 'favoritos'
       ? state.favoritos.length === 0
         ? 'Todavia no marcaste equipos favoritos. Abre los ajustes para elegir alguno.'
-        : 'Tus equipos favoritos no juegan este dia.'
+        : `Tus equipos favoritos no tienen partidos en los ultimos ni los proximos ${VENTANA_FAVORITOS_DIAS} dias.`
       : state.torneosActivos.length === 0
         ? 'No tienes torneos activos. Abre los ajustes para activar alguno.'
         : 'No hay partidos programados para este dia.';
@@ -190,8 +232,13 @@ async function renderPartidos() {
       contenedor.innerHTML = renderEstadoVacio();
       return;
     }
-    const grupos = agruparPorTorneo(partidos);
-    contenedor.innerHTML = [...grupos.entries()].map(([nombre, ps]) => renderTorneoSeccion(nombre, ps)).join('');
+    if (state.vista === 'favoritos') {
+      const grupos = agruparPorFecha(partidos);
+      contenedor.innerHTML = [...grupos.entries()].map(([fecha, ps]) => renderFechaSeccion(fecha, ps)).join('');
+    } else {
+      const grupos = agruparPorTorneo(partidos);
+      contenedor.innerHTML = [...grupos.entries()].map(([nombre, ps]) => renderTorneoSeccion(nombre, ps)).join('');
+    }
   } catch (err) {
     console.error(err);
     contenedor.innerHTML = `<p class="estado-error">No se pudo cargar la informacion. Intenta de nuevo en un momento.</p>`;
@@ -290,6 +337,9 @@ function initEventos() {
     btn.addEventListener('click', () => {
       state.vista = btn.dataset.vista;
       $$('.tab-vista').forEach((b) => b.classList.toggle('activo', b === btn));
+      // el selector de fecha no aplica a favoritos: siempre es la ventana de
+      // +-VENTANA_FAVORITOS_DIAS alrededor de hoy (ver arriba).
+      $('.selector-fecha').classList.toggle('oculto', state.vista === 'favoritos');
       renderPartidos();
     })
   );

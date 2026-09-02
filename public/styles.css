@@ -157,6 +157,10 @@ body {
   gap: 14px;
 }
 
+.selector-fecha.oculto {
+  display: none;
+}
+
 .btn-flecha {
   background: var(--superficie);
   border: 1px solid var(--superficie-borde);
@@ -278,6 +282,19 @@ body {
   margin: 0;
   padding-left: 14px;
   border-left: 3px solid var(--ambar);
+}
+
+.torneo-titulo-hoy {
+  color: var(--ambar);
+}
+
+.partido-torneo-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--texto-tenue-2);
+  margin-bottom: -2px;
 }
 
 .partidos-lista {
