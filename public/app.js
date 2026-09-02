@@ -1,0 +1,323 @@
+import { supabase } from './lib/supabase-client.js';
+import { getTorneosActivos, setTorneosActivos, getFavoritos, setFavoritos } from './lib/storage.js';
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+const state = {
+  fecha: bogotaHoy(),
+  vista: 'todos', // 'todos' | 'favoritos'
+  torneos: [], // catalogo completo, cargado una vez
+  equipos: [], // catalogo completo, cargado una vez (para buscador de favoritos)
+  torneosActivos: [], // slugs
+  favoritos: [], // equipo ids
+};
+
+function bogotaHoy() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+function sumarDias(fechaStr, dias) {
+  const d = new Date(`${fechaStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatearFechaLarga(fechaStr) {
+  const d = new Date(`${fechaStr}T12:00:00`);
+  const texto = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+function horaAmPm(horaStr) {
+  if (!horaStr) return null;
+  const [h, m] = horaStr.split(':').map(Number);
+  const periodo = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${periodo}`;
+}
+
+// ---------- Carga inicial de catalogos ----------
+
+async function cargarCatalogos() {
+  const [torneos, equipos] = await Promise.all([
+    supabase.get('torneos?select=id,nombre,slug,activo_por_defecto&order=nombre.asc'),
+    supabase.get('equipos?select=id,nombre,slug&order=nombre.asc'),
+  ]);
+  state.torneos = torneos;
+  state.equipos = equipos;
+
+  const porDefecto = torneos.filter((t) => t.activo_por_defecto).map((t) => t.slug);
+  state.torneosActivos = getTorneosActivos(porDefecto);
+  state.favoritos = getFavoritos();
+}
+
+// ---------- Fetch de partidos ----------
+
+async function cargarPartidos() {
+  const campos =
+    'id,hora_local,estado,marcador_local,marcador_visitante,canal,' +
+    'torneo:torneo_id(nombre,slug),' +
+    'equipo_local:equipo_local_id(id,nombre),' +
+    'equipo_visitante:equipo_visitante_id(id,nombre)';
+
+  let query = `partidos?select=${campos}&fecha=eq.${state.fecha}&order=hora_local.asc.nullslast`;
+
+  if (state.vista === 'favoritos') {
+    if (state.favoritos.length === 0) return [];
+    const ids = state.favoritos.join(',');
+    query += `&or=(equipo_local_id.in.(${ids}),equipo_visitante_id.in.(${ids}))`;
+  } else {
+    const idsActivos = state.torneos.filter((t) => state.torneosActivos.includes(t.slug)).map((t) => t.id);
+    if (idsActivos.length === 0) return [];
+    query += `&torneo_id=in.(${idsActivos.join(',')})`;
+  }
+
+  return supabase.get(query);
+}
+
+function agruparPorTorneo(partidos) {
+  const grupos = new Map();
+  for (const p of partidos) {
+    const key = p.torneo.nombre;
+    if (!grupos.has(key)) grupos.set(key, []);
+    grupos.get(key).push(p);
+  }
+  return grupos;
+}
+
+// ---------- Render ----------
+
+function esFavorito(equipoId) {
+  return state.favoritos.includes(equipoId);
+}
+
+function renderEquipo(equipo) {
+  const fav = esFavorito(equipo.id) ? '<span class="estrella" title="Favorito">&#9733;</span>' : '';
+  return `<span class="equipo">${fav}${escapeHtml(equipo.nombre)}</span>`;
+}
+
+function renderPartidoCard(p) {
+  const centro =
+    p.estado === 'finalizado'
+      ? `<div class="marcador"><span>${p.marcador_local ?? '-'}</span><span class="separador">-</span><span>${p.marcador_visitante ?? '-'}</span></div>`
+      : p.estado === 'pospuesto'
+        ? `<div class="estado-pospuesto">Pospuesto</div>`
+        : `<div class="hora">${p.hora_local ? horaAmPm(p.hora_local) : 'Por confirmar'}</div>`;
+
+  const canal = p.canal
+    ? `<span class="canal">${escapeHtml(p.canal)}</span>`
+    : `<span class="canal canal-vacio">Canal por confirmar</span>`;
+
+  return `
+    <li class="partido">
+      <div class="partido-equipos">
+        ${renderEquipo(p.equipo_local)}
+        ${centro}
+        ${renderEquipo(p.equipo_visitante)}
+      </div>
+      <div class="partido-canal">${canal}</div>
+    </li>`;
+}
+
+function renderTorneoSeccion(nombreTorneo, partidos) {
+  return `
+    <section class="torneo-seccion">
+      <h2 class="torneo-titulo">${escapeHtml(nombreTorneo)}</h2>
+      <ul class="partidos-lista">
+        ${partidos.map(renderPartidoCard).join('')}
+      </ul>
+    </section>`;
+}
+
+function renderEstadoVacio() {
+  const mensaje =
+    state.vista === 'favoritos'
+      ? state.favoritos.length === 0
+        ? 'Todavia no marcaste equipos favoritos. Abre los ajustes para elegir alguno.'
+        : 'Tus equipos favoritos no juegan este dia.'
+      : state.torneosActivos.length === 0
+        ? 'No tienes torneos activos. Abre los ajustes para activar alguno.'
+        : 'No hay partidos programados para este dia.';
+  return `<p class="estado-vacio">${mensaje}</p>`;
+}
+
+async function renderPartidos() {
+  const contenedor = $('#partidos-contenedor');
+  contenedor.innerHTML = '<p class="cargando">Cargando partidos&hellip;</p>';
+  try {
+    const partidos = await cargarPartidos();
+    if (partidos.length === 0) {
+      contenedor.innerHTML = renderEstadoVacio();
+      return;
+    }
+    const grupos = agruparPorTorneo(partidos);
+    contenedor.innerHTML = [...grupos.entries()].map(([nombre, ps]) => renderTorneoSeccion(nombre, ps)).join('');
+  } catch (err) {
+    console.error(err);
+    contenedor.innerHTML = `<p class="estado-error">No se pudo cargar la informacion. Intenta de nuevo en un momento.</p>`;
+  }
+}
+
+function renderFecha() {
+  $('#fecha-actual').textContent = formatearFechaLarga(state.fecha);
+  $('#fecha-input').value = state.fecha;
+}
+
+// ---------- Panel de ajustes ----------
+
+function renderTorneosChecklist() {
+  $('#torneos-checklist').innerHTML = state.torneos
+    .map(
+      (t) => `
+      <label class="checklist-item">
+        <input type="checkbox" data-slug="${t.slug}" ${state.torneosActivos.includes(t.slug) ? 'checked' : ''} />
+        <span>${escapeHtml(t.nombre)}</span>
+      </label>`
+    )
+    .join('');
+}
+
+function renderFavoritosChips() {
+  const cont = $('#favoritos-chips');
+  if (state.favoritos.length === 0) {
+    cont.innerHTML = '<p class="ayuda-vacio">Ningun equipo favorito todavia.</p>';
+    return;
+  }
+  cont.innerHTML = state.favoritos
+    .map((id) => {
+      const eq = state.equipos.find((e) => e.id === id);
+      if (!eq) return '';
+      return `<button class="chip" data-id="${id}">${escapeHtml(eq.nombre)} &times;</button>`;
+    })
+    .join('');
+}
+
+function renderResultadosBusqueda(texto) {
+  const cont = $('#busqueda-resultados');
+  if (!texto.trim()) {
+    cont.innerHTML = '';
+    return;
+  }
+  const t = normalizar(texto);
+  const resultados = state.equipos
+    .filter((e) => normalizar(e.nombre).includes(t) && !state.favoritos.includes(e.id))
+    .slice(0, 8);
+  cont.innerHTML = resultados
+    .map((e) => `<button class="resultado-busqueda" data-id="${e.id}">${escapeHtml(e.nombre)}</button>`)
+    .join('');
+}
+
+function normalizar(s) {
+  return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+// ---------- Eventos ----------
+
+function initEventos() {
+  $('#btn-dia-anterior').addEventListener('click', () => {
+    state.fecha = sumarDias(state.fecha, -1);
+    renderFecha();
+    renderPartidos();
+  });
+  $('#btn-dia-siguiente').addEventListener('click', () => {
+    state.fecha = sumarDias(state.fecha, 1);
+    renderFecha();
+    renderPartidos();
+  });
+  $('#btn-hoy').addEventListener('click', () => {
+    state.fecha = bogotaHoy();
+    renderFecha();
+    renderPartidos();
+  });
+  $('#fecha-actual').addEventListener('click', () => {
+    const input = $('#fecha-input');
+    if (input.showPicker) input.showPicker();
+    else input.focus();
+  });
+  $('#fecha-input').addEventListener('change', (e) => {
+    if (e.target.value) {
+      state.fecha = e.target.value;
+      renderFecha();
+      renderPartidos();
+    }
+  });
+
+  $$('.tab-vista').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      state.vista = btn.dataset.vista;
+      $$('.tab-vista').forEach((b) => b.classList.toggle('activo', b === btn));
+      renderPartidos();
+    })
+  );
+
+  const abrirAjustes = () => {
+    $('#panel-ajustes').classList.add('abierto');
+    $('#overlay-ajustes').classList.add('mostrar');
+  };
+  const cerrarAjustes = () => {
+    $('#panel-ajustes').classList.remove('abierto');
+    $('#overlay-ajustes').classList.remove('mostrar');
+  };
+  $('#btn-ajustes').addEventListener('click', abrirAjustes);
+  $('#btn-cerrar-ajustes').addEventListener('click', cerrarAjustes);
+  $('#overlay-ajustes').addEventListener('click', cerrarAjustes);
+
+  $('#torneos-checklist').addEventListener('change', (e) => {
+    const input = e.target.closest('input[data-slug]');
+    if (!input) return;
+    const slug = input.dataset.slug;
+    state.torneosActivos = input.checked
+      ? [...state.torneosActivos, slug]
+      : state.torneosActivos.filter((s) => s !== slug);
+    setTorneosActivos(state.torneosActivos);
+    if (state.vista === 'todos') renderPartidos();
+  });
+
+  $('#busqueda-equipo').addEventListener('input', (e) => renderResultadosBusqueda(e.target.value));
+
+  $('#busqueda-resultados').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-id]');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    state.favoritos = [...state.favoritos, id];
+    setFavoritos(state.favoritos);
+    $('#busqueda-equipo').value = '';
+    renderResultadosBusqueda('');
+    renderFavoritosChips();
+    if (state.vista === 'favoritos') renderPartidos();
+  });
+
+  $('#favoritos-chips').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-id]');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    state.favoritos = state.favoritos.filter((f) => f !== id);
+    setFavoritos(state.favoritos);
+    renderFavoritosChips();
+    if (state.vista === 'favoritos') renderPartidos();
+  });
+}
+
+// ---------- Arranque ----------
+
+async function main() {
+  initEventos();
+  renderFecha();
+  try {
+    await cargarCatalogos();
+  } catch (err) {
+    console.error(err);
+    $('#partidos-contenedor').innerHTML = `<p class="estado-error">No se pudo conectar con la base de datos.</p>`;
+    return;
+  }
+  renderTorneosChecklist();
+  renderFavoritosChips();
+  renderPartidos();
+}
+
+main();
