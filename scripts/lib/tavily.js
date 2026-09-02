@@ -129,15 +129,26 @@ export function queryDescubrimiento(nombreTorneo, fechaISO) {
 // Copa Betplay en fase eliminatoria (octavos, cuartos, etc.) tiene un numero
 // FIJO y conocido de cruces por fase -- en vez de 14 busquedas ancladas a una
 // fecha (que fallan seguido, ver CLAUDE.md seccion 13, "hibrida por fase"),
-// una sola busqueda del cuadro completo de la fase trae los 8 cruces (ida y
-// vuelta, con fecha propia cada uno) en una o dos fuentes. Se usa como
-// respaldo SOLO cuando la busqueda por fecha no encuentra nada (no en cada
-// fecha, para no duplicar el gasto de creditos de Tavily en los dias que ya
-// funcionan bien).
+// una sola busqueda del cuadro completo de la fase trae los cruces (con
+// fecha propia cada uno) en una o dos fuentes. Se usa como respaldo SOLO
+// cuando la busqueda por fecha no encuentra nada (no en cada fecha, para no
+// duplicar el gasto de creditos de Tavily en los dias que ya funcionan
+// bien).
+//
+// IMPORTANTE (bug real encontrado y corregido el 2026-09-02): octavos y
+// cuartos de final se juegan a PARTIDO UNICO, no ida y vuelta -- la Dimayor
+// cambio el formato el 20 de agosto de 2026 (por el terremoto), pero varios
+// articulos de prensa indexados (ej. de ESPN) describen el formato VIEJO
+// (ida y vuelta) y nunca se actualizaron. La query original no mencionaba
+// "partido unico", lo que dejaba pasar esos articulos obsoletos como si
+// fueran la fuente correcta. Se agrega el termino explicitamente para sesgar
+// la busqueda hacia articulos que ya reflejan el formato actual. A partir de
+// semifinales el torneo SI vuelve a ida y vuelta -- si se llega a esa fase,
+// hay que quitar "partido unico" de la query.
 //
 // MANTENIMIENTO: "octavos de final" hay que actualizarlo a mano segun avance
 // el torneo (cuartos de final, semifinal, final) -- no hay forma automatica
 // de saber en que fase esta Copa Betplay sin otra fuente aparte.
 export function queryCuadroCopaBetplay() {
-  return 'Copa Betplay Colombia 2026 octavos de final programacion completa todos los partidos fecha hora canal';
+  return 'Copa Betplay Colombia 2026 octavos de final partido unico programacion completa todos los partidos fecha hora canal';
 }
