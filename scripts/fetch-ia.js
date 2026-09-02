@@ -45,10 +45,19 @@ async function candidatosDeExtraccion(torneoSlug, torneoNombre, fuentesDb) {
 
   for (const fuente of fuentesDb) {
     if (ES_INDICE_DIMAYOR(fuente.url)) {
-      const posts = await buscarPostsDimayor(torneoNombre);
-      if (posts.length === 0) console.log('[fetch-ia] busqueda en dimayor.com.co sin resultados para este torneo');
-      for (const post of posts) {
-        candidatos.push({ etiqueta: post.url, obtenerTexto: () => fetchAsText(post.url) });
+      // Resolver el indice de Dimayor implica una llamada de red aparte (la
+      // API de busqueda de WordPress) -- si esa llamada falla (ej. 403 por
+      // bloqueo anti-bot en IPs de datacenter, visto en GitHub Actions el
+      // 2026-09-02), no debe tumbar TODA la lista de candidatos, solo esta
+      // fuente puntual. Ver CLAUDE.md seccion 13.
+      try {
+        const posts = await buscarPostsDimayor(torneoNombre);
+        if (posts.length === 0) console.log('[fetch-ia] busqueda en dimayor.com.co sin resultados para este torneo');
+        for (const post of posts) {
+          candidatos.push({ etiqueta: post.url, obtenerTexto: () => fetchAsText(post.url) });
+        }
+      } catch (err) {
+        console.error('[fetch-ia] no se pudo resolver el indice de dimayor.com.co:', err.message);
       }
     } else {
       candidatos.push({ etiqueta: fuente.url, obtenerTexto: () => fetchAsText(fuente.url) });
