@@ -1,0 +1,32 @@
+name: Fetch equipos (roster de favoritos)
+
+# Corre una vez al mes: los planteles/clasificados cambian poco durante la
+# temporada, no hace falta mas frecuencia que esta. Ver CLAUDE.md seccion 13.
+
+on:
+  schedule:
+    - cron: '13 10 1 * *' # dia 1 de cada mes, 05:13 America/Bogota (UTC-5)
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Equipos de los 4 torneos con API
+        continue-on-error: true
+        run: node scripts/fetch-equipos-liga.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+      - name: Equipos de los 6 torneos por IA
+        continue-on-error: true
+        run: node scripts/fetch-equipos-ia.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -8,11 +8,10 @@ import { parsearJSONDeLLM } from './json.js';
 
 const MODEL = 'gemini-3.5-flash-lite';
 
-export async function extraerPartidosConGemini(textoFuente, fecha, nombresTorneo) {
+/** Llamada de bajo nivel a Gemini: manda `prompt`, devuelve el JSON ya parseado de la respuesta. */
+export async function generarJSONConGemini(prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Falta GEMINI_API_KEY');
-
-  const prompt = buildPrompt(textoFuente, fecha, nombresTorneo);
 
   const data = await conReintentos(async () => {
     const res = await fetch(
@@ -34,8 +33,12 @@ export async function extraerPartidosConGemini(textoFuente, fecha, nombresTorneo
   });
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error(`Respuesta de Gemini sin contenido: ${JSON.stringify(data)}`);
+  return parsearJSONDeLLM(text);
+}
 
-  const parsed = parsearJSONDeLLM(text);
+export async function extraerPartidosConGemini(textoFuente, fecha, nombresTorneo) {
+  const prompt = buildPrompt(textoFuente, fecha, nombresTorneo);
+  const parsed = await generarJSONConGemini(prompt);
   return Array.isArray(parsed.partidos) ? parsed.partidos : [];
 }
 
