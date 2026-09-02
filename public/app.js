@@ -17,7 +17,18 @@ const state = {
 // fija alrededor de hoy (ultimas y proximas semanas), porque lo util de un
 // favorito es ver como le fue la ultima vez y cuando juega la proxima, no
 // filtrar dia por dia (decision del usuario, ver CLAUDE.md seccion 13).
-const VENTANA_FAVORITOS_DIAS = 14;
+//
+// La ventana es asimetrica a proposito: hacia atras son resultados ya
+// confirmados en la BD (sin riesgo), pero hacia adelante dependemos de que
+// las fuentes automaticas (colombia.com para Liga/Copa Betplay) ya tengan el
+// partido -- y esa fuente solo cubre de forma confiable unos ~5 dias hacia
+// adelante (ver CLAUDE.md seccion 13, 2026-09-02: se probaron 5 APIs/fuentes
+// gratuitas distintas para una ventana mas amplia y ninguna funciono dentro
+// del presupuesto $0/sin-tarjeta del proyecto). Mostrar "vacio" mas alla de
+// esa ventana es mejor que arriesgarse a mostrar un partido con fecha
+// incorrecta o quedarnos cortos silenciosamente.
+const VENTANA_FAVORITOS_DIAS_ATRAS = 14;
+const VENTANA_FAVORITOS_DIAS_ADELANTE = 5;
 
 function bogotaHoy() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
@@ -76,8 +87,8 @@ async function cargarPartidos() {
   if (state.vista === 'favoritos') {
     if (state.favoritos.length === 0) return [];
     const hoy = bogotaHoy();
-    const desde = sumarDias(hoy, -VENTANA_FAVORITOS_DIAS);
-    const hasta = sumarDias(hoy, VENTANA_FAVORITOS_DIAS);
+    const desde = sumarDias(hoy, -VENTANA_FAVORITOS_DIAS_ATRAS);
+    const hasta = sumarDias(hoy, VENTANA_FAVORITOS_DIAS_ADELANTE);
     const ids = state.favoritos.join(',');
     query =
       `partidos?select=${campos}&fecha=gte.${desde}&fecha=lte.${hasta}` +
@@ -220,7 +231,7 @@ function renderEstadoVacio() {
     state.vista === 'favoritos'
       ? state.favoritos.length === 0
         ? 'Todavia no marcaste equipos favoritos. Abre los ajustes para elegir alguno.'
-        : `Tus equipos favoritos no tienen partidos en los ultimos ni los proximos ${VENTANA_FAVORITOS_DIAS} dias.`
+        : `Tus equipos favoritos no tienen partidos en los ultimos ${VENTANA_FAVORITOS_DIAS_ATRAS} dias ni en los proximos ${VENTANA_FAVORITOS_DIAS_ADELANTE}.`
       : state.torneosActivos.length === 0
         ? 'No tienes torneos activos. Abre los ajustes para activar alguno.'
         : 'No hay partidos programados para este dia.';
@@ -341,8 +352,8 @@ function initEventos() {
     btn.addEventListener('click', () => {
       state.vista = btn.dataset.vista;
       $$('.tab-vista').forEach((b) => b.classList.toggle('activo', b === btn));
-      // el selector de fecha no aplica a favoritos: siempre es la ventana de
-      // +-VENTANA_FAVORITOS_DIAS alrededor de hoy (ver arriba).
+      // el selector de fecha no aplica a favoritos: siempre es la ventana
+      // asimetrica alrededor de hoy (ver arriba).
       $('.selector-fecha').classList.toggle('oculto', state.vista === 'favoritos');
       renderPartidos();
     })
