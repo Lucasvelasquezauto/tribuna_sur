@@ -211,6 +211,7 @@ function renderPartidoCard(p, { mostrarTorneo = false } = {}) {
       : '';
 
   const torneoTag = mostrarTorneo ? `<div class="partido-torneo-tag">${escapeHtml(p.torneo.nombre)}</div>` : '';
+  const pie = p.estado === 'finalizado' ? '' : `<div class="partido-canal">${canal}${sinConfirmar}</div>`;
 
   return `
     <li class="partido">
@@ -220,7 +221,7 @@ function renderPartidoCard(p, { mostrarTorneo = false } = {}) {
         ${centro}
         ${renderEquipo(p.equipo_visitante)}
       </div>
-      <div class="partido-canal">${canal}${sinConfirmar}</div>
+      ${pie}
     </li>`;
 }
 
