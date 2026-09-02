@@ -12,6 +12,37 @@
 
 import { conReintentos } from './retry.js';
 
+// Lista de dominios de prensa/oficiales colombianos verificados confiables
+// durante esta sesion (nunca dieron un dato incorrecto cuando se revisaron
+// directamente). Usar `include_domains` en vez de buscar en todo internet es
+// el cambio real pedido por el usuario el 2026-09-02: "escoger fuentes
+// confiables, no multiples" -- en vez de que el modelo reconcilie senales de
+// fuentes de calidad muy dispar, la busqueda misma ya viene acotada a fuentes
+// buenas. Ver CLAUDE.md seccion 13 para el detalle de cada bug que motivo
+// esta lista.
+//
+// Deliberadamente NO incluye (causaron bugs reales esta sesion):
+// - espndeportes.espn.com / espn.com: sus tablas-calendario de un equipo
+//   (decenas de fechas en una sola tabla) causaron 2 casos reales de un
+//   partido de otra fecha atribuido a la fecha buscada.
+// - sofascore.com: da horarios en UTC sin dejarlo claro, causo que un
+//   partido de AYER (hora Bogota) se tomara como de HOY.
+// - valuestats.com: horarios inconsistentes con el resto de fuentes.
+const DOMINIOS_CONFIABLES = [
+  'dimayor.com.co',
+  'winsports.co',
+  'futbolred.com',
+  'colombia.com',
+  'noticiascaracol.com',
+  'caracol.com.co',
+  'elespectador.com',
+  'elpais.com.co',
+  'eltiempo.com',
+  'semana.com',
+  'as.com',
+  'espn.com.co', // distinto de espndeportes.espn.com -- este SI se uso bien esta sesion (nota-articulo, no tabla-calendario)
+];
+
 /**
  * Busca en Tavily y devuelve los resultados concatenados como texto plano,
  * en el mismo formato que espera el prompt de extraccion (buildPrompt en
@@ -39,6 +70,22 @@ export async function buscarTextoTavily(query, { maxResultados = 8 } = {}) {
         // que coincidian en la hora correcta).
         search_depth: 'advanced',
         max_results: maxResultados,
+        // Fuentes acotadas a una lista curada (ver arriba) en vez de todo
+        // internet -- reduce la necesidad de que el modelo reconcilie
+        // senales de fuentes de calidad muy dispar.
+        include_domains: DOMINIOS_CONFIABLES,
+        // 'month' en vez de 'week': se probo con 'week' y redujo demasiado
+        // la cobertura de Tavily para fechas lejanas (+7 a +13 dias), que es
+        // justo la ventana que Tavily existe para cubrir -- cayo al hub de
+        // Dimayor (que no funciona en CI) en vez de encontrar algo util. El
+        // riesgo de articulos viejos con un PLAN superado (caso real:
+        // "se reprogramo para tal fecha" que despues no se cumplio) ya lo
+        // cubre la regla de "prioriza lo ya jugado sobre un plan" en el
+        // prompt de extraccion (gemini.js) -- no hace falta ademas cortar
+        // por fecha de publicacion tan agresivo.
+        time_range: 'month',
+        topic: 'news',
+        country: 'colombia',
       }),
     });
     if (!res.ok) {
