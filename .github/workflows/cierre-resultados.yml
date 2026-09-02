@@ -25,8 +25,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      # el cierre puede terminar llamando fetch-ia.js para Liga/Copa/Torneo
-      # Betplay, que usa el hub de Dimayor renderizado (Playwright).
+      # el cierre puede terminar llamando fetch-ia.js para Liga/Copa Betplay
+      # (Tavily primero, el hub de Dimayor con Playwright como respaldo local).
       - run: npx playwright install --with-deps chromium
       - run: node scripts/cierre-resultados.js
         env:
@@ -35,3 +35,4 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}

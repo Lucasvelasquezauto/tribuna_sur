@@ -14,22 +14,41 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      # Liga/Copa Betplay usan el hub de Dimayor renderizado (Playwright)
-      # como fuente principal -- ver CLAUDE.md seccion 13.
+      # Tavily es la fuente principal para estos 2 torneos (agrega varias
+      # fuentes de prensa/oficiales por busqueda, y a diferencia del hub de
+      # Dimayor si funciona desde IPs de GitHub Actions -- ver CLAUDE.md
+      # seccion 13, 2026-09-02). El hub de Dimayor (Playwright) sigue como
+      # candidato de respaldo dentro de fetch-ia.js, aunque en la practica
+      # solo sirve corriendolo local/manualmente por el bloqueo de IP.
       - run: npx playwright install --with-deps chromium
-      # continue-on-error en cada paso: si un torneo falla (fuente caida, cuota
-      # agotada, etc.) no debe bloquear al otro. Ver CLAUDE.md seccion 10.
-      - name: Liga Betplay
-        continue-on-error: true
-        run: node scripts/fetch-ia.js liga-betplay
+      # Se corre para HOY + los proximos dias (no solo hoy): antes esto era
+      # el motivo por el que la ventana de favoritos (public/app.js) no
+      # podia mostrar partidos futuros con confianza -- colombia.com solo
+      # cubre ~2-3 dias y no se consultaba mas alla de hoy. Con Tavily
+      # buscando por fecha especifica, se puede rellenar la ventana de
+      # verdad. `|| true` por fecha: si una fecha puntual falla (sin
+      # partidos, error transitorio), no debe frenar las demas.
+      - name: Liga Betplay (hoy + proximos 7 dias)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      - name: Copa Betplay
-        continue-on-error: true
-        run: node scripts/fetch-ia.js copa-betplay
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: |
+          for i in 0 1 2 3 4 5 6 7; do
+            fecha=$(date -u -d "+${i} days" +%F)
+            echo "--- liga-betplay ${fecha} ---"
+            node scripts/fetch-ia.js liga-betplay "${fecha}" || echo "fallo liga-betplay ${fecha}, sigue con la siguiente fecha"
+          done
+      - name: Copa Betplay (hoy + proximos 7 dias)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: |
+          for i in 0 1 2 3 4 5 6 7; do
+            fecha=$(date -u -d "+${i} days" +%F)
+            echo "--- copa-betplay ${fecha} ---"
+            node scripts/fetch-ia.js copa-betplay "${fecha}" || echo "fallo copa-betplay ${fecha}, sigue con la siguiente fecha"
+          done

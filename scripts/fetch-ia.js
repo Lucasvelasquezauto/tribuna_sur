@@ -18,6 +18,15 @@ import { encontrarEquipoId } from './lib/match-equipo.js';
 import { renderizarTexto } from './lib/render-page.js';
 import { FUENTE_DIMAYOR_HUB } from './lib/dimayor-hub-fuentes.js';
 import { recortarPorFecha } from './lib/recortar-por-fecha.js';
+import { buscarTextoTavily, queryDescubrimiento } from './lib/tavily.js';
+
+// Liga/Copa Betplay: Tavily agrega varias fuentes de prensa/oficiales
+// independientes para la misma fecha (en vez de depender de una sola pagina),
+// y a diferencia del hub de Dimayor SI funciona sin bloqueo desde IPs de
+// GitHub Actions (confirmado en vivo el 2026-09-02, ver CLAUDE.md seccion
+// 13) -- por eso va primero, antes que el hub renderizado (que solo sirve
+// corriendolo local/manualmente) y antes que colombia.com.
+const TORNEOS_CON_TAVILY = new Set(['liga-betplay', 'copa-betplay']);
 
 // dimayor.com.co/category/programacion/ es un indice, no trae el detalle de los
 // partidos -- se resuelve via la API de busqueda de WordPress a varios posts
@@ -26,14 +35,23 @@ const ES_INDICE_DIMAYOR = (url) => url.includes('dimayor.com.co/category/program
 
 /**
  * Arma la lista ordenada de candidatos a intentar para extraer partidos:
- * primero el hub de Dimayor renderizado (si el torneo tiene uno registrado --
- * Liga/Torneo/Copa Betplay, ver CLAUDE.md seccion 13, es la fuente mas
- * completa y confiable que se encontro), despues las fuentes de
- * `fuentes_por_torneo` en orden de prioridad (resolviendo el indice de
- * Dimayor a posts concretos si aparece entre ellas).
+ * primero Tavily (Liga/Copa Betplay, funciona desatendido -- ver arriba),
+ * despues el hub de Dimayor renderizado (si el torneo tiene uno registrado,
+ * solo funciona corriendolo local/manualmente, ver CLAUDE.md seccion 13),
+ * despues las fuentes de `fuentes_por_torneo` en orden de prioridad
+ * (resolviendo el indice de Dimayor a posts concretos si aparece entre
+ * ellas).
  */
-async function candidatosDeExtraccion(torneoSlug, torneoNombre, fuentesDb) {
+async function candidatosDeExtraccion(torneoSlug, torneoNombre, fuentesDb, fecha) {
   const candidatos = [];
+
+  if (TORNEOS_CON_TAVILY.has(torneoSlug)) {
+    const query = queryDescubrimiento(torneoNombre, fecha);
+    candidatos.push({
+      etiqueta: `Tavily: "${query}"`,
+      obtenerTexto: () => buscarTextoTavily(query),
+    });
+  }
 
   const hub = FUENTE_DIMAYOR_HUB[torneoSlug];
   if (hub) {
@@ -99,6 +117,35 @@ async function resolverEquipoId(nombre, candidatos) {
   return nuevo.id;
 }
 
+const VENTANA_DUPLICADO_DIAS = 10;
+
+/**
+ * Salvaguarda contra reprogramaciones mal resueltas: si el mismo cruce
+ * (mismos dos equipos, cualquier orden) ya tiene una fila 'programado' en
+ * este torneo dentro de +-VENTANA_DUPLICADO_DIAS de la fecha nueva, no crear
+ * una segunda fila -- mejor omitir y dejar log que arriesgarse a mostrar dos
+ * fechas distintas para lo que probablemente es el mismo partido. No
+ * reemplaza al prompt (seccion "Reprogramaciones" en gemini.js), es un
+ * respaldo cuando la fuente no trae suficiente contexto para que el modelo
+ * lo resuelva solo -- ver CLAUDE.md seccion 13, caso Nacional-Cali.
+ */
+async function otraFechaPendienteParaElCruce(torneoId, equipoLocalId, equipoVisitanteId, fecha) {
+  const desde = sumarDiasISO(fecha, -VENTANA_DUPLICADO_DIAS);
+  const hasta = sumarDiasISO(fecha, VENTANA_DUPLICADO_DIAS);
+  const filtro =
+    `select=id,fecha&torneo_id=eq.${torneoId}&estado=eq.programado&fecha=neq.${fecha}` +
+    `&fecha=gte.${desde}&fecha=lte.${hasta}` +
+    `&or=(and(equipo_local_id.eq.${equipoLocalId},equipo_visitante_id.eq.${equipoVisitanteId}),and(equipo_local_id.eq.${equipoVisitanteId},equipo_visitante_id.eq.${equipoLocalId}))`;
+  const existentes = await select('partidos', filtro);
+  return existentes[0] ?? null;
+}
+
+function sumarDiasISO(fechaStr, dias) {
+  const d = new Date(`${fechaStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
 async function marcarFetchJob(torneoId, fecha, estado) {
   await upsert(
     'fetch_jobs',
@@ -124,7 +171,7 @@ export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
     `select=url,prioridad&torneo_id=eq.${torneo.id}&activo=eq.true&order=prioridad.asc`
   );
 
-  const candidatos = await candidatosDeExtraccion(torneoSlug, torneo.nombre, fuentesDb);
+  const candidatos = await candidatosDeExtraccion(torneoSlug, torneo.nombre, fuentesDb, fecha);
   if (candidatos.length === 0) throw new Error(`Sin fuentes para ${torneoSlug}`);
 
   console.log(`[fetch-ia] torneo=${torneoSlug} fecha=${fecha} proveedor=${proveedor} candidatos=${candidatos.length}`);
@@ -167,6 +214,17 @@ export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
     const estado = ESTADOS_VALIDOS.has(p.estado) ? p.estado : 'programado';
     const equipoLocalId = await resolverEquipoId(p.equipo_local, candidatosEquipos);
     const equipoVisitanteId = await resolverEquipoId(p.equipo_visitante, candidatosEquipos);
+
+    if (estado === 'programado') {
+      const otra = await otraFechaPendienteParaElCruce(torneo.id, equipoLocalId, equipoVisitanteId, fecha);
+      if (otra) {
+        console.warn(
+          `[fetch-ia] omitido por posible reprogramacion sin resolver: ${p.equipo_local} vs ${p.equipo_visitante} en ${fecha} ya existe 'programado' en ${otra.fecha} (partido id ${otra.id}) -- revisar a mano cual fecha es la correcta`
+        );
+        continue;
+      }
+    }
+
     await upsert(
       'equipos_torneos',
       [
