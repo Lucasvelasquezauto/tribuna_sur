@@ -1,4 +1,4 @@
-name: Fetch Colombia (Liga/Copa/Torneo Betplay)
+name: Fetch Colombia (Liga/Copa Betplay)
 
 on:
   schedule:
@@ -14,11 +14,11 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      # Liga/Copa/Torneo Betplay usan el hub de Dimayor renderizado (Playwright)
+      # Liga/Copa Betplay usan el hub de Dimayor renderizado (Playwright)
       # como fuente principal -- ver CLAUDE.md seccion 13.
       - run: npx playwright install --with-deps chromium
       # continue-on-error en cada paso: si un torneo falla (fuente caida, cuota
-      # agotada, etc.) no debe bloquear a los otros dos. Ver CLAUDE.md seccion 10.
+      # agotada, etc.) no debe bloquear al otro. Ver CLAUDE.md seccion 10.
       - name: Liga Betplay
         continue-on-error: true
         run: node scripts/fetch-ia.js liga-betplay
@@ -29,13 +29,6 @@ jobs:
       - name: Copa Betplay
         continue-on-error: true
         run: node scripts/fetch-ia.js copa-betplay
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      - name: Torneo Betplay
-        continue-on-error: true
-        run: node scripts/fetch-ia.js torneo-betplay
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

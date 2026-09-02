@@ -46,8 +46,12 @@ function horaAmPm(horaStr) {
 // ---------- Carga inicial de catalogos ----------
 
 async function cargarCatalogos() {
+  // torneo-betplay se saco de la app (poca audiencia + comparte la misma
+  // fuente sin resolver de Liga/Copa Betplay) -- se filtra aqui en vez de
+  // borrar sus filas, para no perder los partidos ya guardados. Ver
+  // CLAUDE.md seccion 13.
   const [torneos, equipos] = await Promise.all([
-    supabase.get('torneos?select=id,nombre,slug,activo_por_defecto&order=nombre.asc'),
+    supabase.get('torneos?select=id,nombre,slug,activo_por_defecto&slug=neq.torneo-betplay&order=nombre.asc'),
     supabase.get('equipos?select=id,nombre,slug&order=nombre.asc'),
   ]);
   state.torneos = torneos;
