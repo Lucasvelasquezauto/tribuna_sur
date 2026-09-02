@@ -140,6 +140,12 @@ body {
   margin-top: 4px;
 }
 
+.btn-icono-estrella {
+  color: var(--dorado);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
 .btn-icono:hover {
   background: #fff;
   border-color: #cbb883;
