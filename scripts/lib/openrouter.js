@@ -13,11 +13,11 @@ import { parsearJSONDeLLM } from './json.js';
 
 const MODEL = 'openrouter/free';
 
-export async function extraerPartidosConOpenRouter(textoFuente, fecha, torneoNombre) {
+export async function extraerPartidosConOpenRouter(textoFuente, fecha, nombresTorneo) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('Falta OPENROUTER_API_KEY');
 
-  const prompt = buildPrompt(textoFuente, fecha, torneoNombre);
+  const prompt = buildPrompt(textoFuente, fecha, nombresTorneo);
 
   const data = await conReintentos(async () => {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {

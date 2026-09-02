@@ -8,11 +8,11 @@ import { parsearJSONDeLLM } from './json.js';
 
 const MODEL = 'gemini-3.5-flash-lite';
 
-export async function extraerPartidosConGemini(textoFuente, fecha, torneoNombre) {
+export async function extraerPartidosConGemini(textoFuente, fecha, nombresTorneo) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Falta GEMINI_API_KEY');
 
-  const prompt = buildPrompt(textoFuente, fecha, torneoNombre);
+  const prompt = buildPrompt(textoFuente, fecha, nombresTorneo);
 
   const data = await conReintentos(async () => {
     const res = await fetch(
@@ -39,16 +39,29 @@ export async function extraerPartidosConGemini(textoFuente, fecha, torneoNombre)
   return Array.isArray(parsed.partidos) ? parsed.partidos : [];
 }
 
-export function buildPrompt(textoFuente, fecha, torneoNombre) {
+export function buildPrompt(textoFuente, fecha, nombresTorneo) {
+  const nombres = Array.isArray(nombresTorneo) ? nombresTorneo : [nombresTorneo];
+  const nombresTexto = nombres.map((n) => `"${n}"`).join(', ');
+  const nombrePrincipal = nombres[0];
+
   return `Eres un extractor de datos deportivos. A continuacion hay texto extraido de una pagina web con programacion de partidos de futbol. La pagina puede mezclar partidos de MUCHOS torneos y paises distintos.
 
-Tu tarea: encontrar SOLO los partidos del torneo "${torneoNombre}" que se jueguen en la fecha ${fecha} (formato YYYY-MM-DD).
+Tu tarea: encontrar SOLO los partidos del torneo "${nombrePrincipal}" que se jueguen en la fecha ${fecha} (formato YYYY-MM-DD). Ese torneo puede aparecer en el texto con cualquiera de estos nombres (son el mismo torneo, distintas fuentes lo llaman distinto -- a veces con el patrocinador, a veces con su nombre generico/oficial): ${nombresTexto}.
 
 Reglas estrictas:
-- Ignora por completo cualquier partido de otro torneo, aunque sea de la misma fecha (ej. si te piden "${torneoNombre}" y ves partidos de otras ligas, copas o paises, NO los incluyas).
+- Ignora por completo cualquier partido de otro torneo, aunque sea de la misma fecha (si ves partidos de otras ligas, copas o paises que NO coinciden con ninguno de los nombres de arriba, NO los incluyas).
 - Ignora partidos de otras fechas.
 - Si el texto no deja claro a que torneo pertenece un partido, NO lo incluyas (mejor omitir que adivinar).
-- Si no encuentras ningun partido de "${torneoNombre}" en la fecha ${fecha}, responde {"partidos": []}. Es un resultado valido y esperado la mayoria de los dias.
+- Si no encuentras ningun partido de este torneo en la fecha ${fecha}, responde {"partidos": []}. Es un resultado valido y esperado la mayoria de los dias.
+
+Reglas para la hora (hora_local_bogota): el texto fuente a veces trae la hora en formato de 12 horas con AM/PM (ej. "5:30 PM"). DEBES convertirla vos mismo a 24 horas antes de responder -- no la copies tal cual, ni le quites solo las letras "AM"/"PM" dejando el numero igual. Conversion correcta, con ejemplos exactos:
+- "5:30 PM" -> "17:30" (sumar 12 a la hora cuando es PM y no es 12)
+- "8:00 PM" -> "20:00"
+- "2:00 PM" -> "14:00"
+- "9:00 AM" -> "09:00" (la hora AM se queda igual, salvo 12 AM)
+- "12:00 PM" (mediodia) -> "12:00"
+- "12:00 AM" (medianoche) -> "00:00"
+Un error muy comun y GRAVE es devolver "05:30" para "5:30 PM" -- eso esta MAL, la respuesta correcta es "17:30". Revisa tu conversion antes de responder.
 
 Responde UNICAMENTE con un JSON con este esquema exacto, sin explicaciones ni texto adicional:
 

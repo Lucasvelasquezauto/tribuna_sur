@@ -13,6 +13,7 @@ import { extraerPartidosConGemini } from './lib/gemini.js';
 import { extraerPartidosConOpenRouter } from './lib/openrouter.js';
 import { buscarPostsDimayor } from './lib/dimayor-discovery.js';
 import { esEjecucionDirecta } from './lib/cli.js';
+import { nombresParaPrompt } from './lib/torneo-aliases.js';
 
 // dimayor.com.co/category/programacion/ es un indice, no trae el detalle de los
 // partidos -- se resuelve via la API de busqueda de WordPress a varios posts
@@ -92,7 +93,7 @@ export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
       try {
         if (url !== fuente.url) console.log(`[fetch-ia]   probando candidato: ${url}`);
         const texto = await fetchAsText(url);
-        partidosExtraidos = await extraer(texto, fecha, torneo.nombre);
+        partidosExtraidos = await extraer(texto, fecha, nombresParaPrompt(torneoSlug, torneo.nombre));
         console.log(`[fetch-ia]   ${partidosExtraidos.length} partido(s) extraidos`);
         if (partidosExtraidos.length > 0) break fuentesLoop; // encontro datos, no hace falta seguir probando
       } catch (err) {

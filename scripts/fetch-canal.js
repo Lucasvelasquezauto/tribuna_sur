@@ -13,6 +13,7 @@ import { fetchAsText } from './lib/html-to-text.js';
 import { extraerPartidosConGemini } from './lib/gemini.js';
 import { encontrarEquipoId } from './lib/match-equipo.js';
 import { esEjecucionDirecta } from './lib/cli.js';
+import { nombresParaPrompt } from './lib/torneo-aliases.js';
 
 export async function fetchCanal(torneoSlug, fecha = bogotaDateStr(new Date())) {
   const [torneo] = await select('torneos', `select=id,nombre,slug,fuente_tipo&slug=eq.${torneoSlug}`);
@@ -51,7 +52,7 @@ export async function fetchCanal(torneoSlug, fecha = bogotaDateStr(new Date())) 
     try {
       console.log(`[fetch-canal] intentando fuente (prioridad ${fuente.prioridad}): ${fuente.url}`);
       const texto = await fetchAsText(fuente.url);
-      extraidos = await extraerPartidosConGemini(texto, fecha, torneo.nombre);
+      extraidos = await extraerPartidosConGemini(texto, fecha, nombresParaPrompt(torneoSlug, torneo.nombre));
       console.log(`[fetch-canal] ${extraidos.length} partido(s) extraidos de esta fuente`);
       if (extraidos.length > 0) break;
     } catch (err) {
