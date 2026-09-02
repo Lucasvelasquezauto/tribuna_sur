@@ -1,29 +1,31 @@
-/* Tribuna Sur — tema "estadio de noche": negro profundo, resplandor de
-   reflectores en ámbar, verde de cancha como acento secundario. Tipografía
-   condensada de marcador para números/titulares, Archivo para el resto. */
+/* Tribuna Sur — tema "programa de matchday": papel crema, verde de cancha,
+   dorado de trofeo. Paleta clasica de futbol/mundial en vez de dark-mode de
+   marcador. Fraunces (serif con caracter, se lee elegante en numeros grandes)
+   para titulares y marcadores, Public Sans para el resto — comoda de leer. */
 
 :root {
-  --bg: #0a0c10;
-  --bg-2: #0f1319;
-  --superficie: #151a22;
-  --superficie-borde: #232a35;
-  --texto: #f1ede3;
-  --texto-tenue: #97a0ad;
-  --texto-tenue-2: #626b78;
+  --bg: #f4eedd;
+  --bg-2: #faf5e7;
+  --superficie: #fffcf3;
+  --superficie-borde: #e3d6b4;
+  --texto: #241f19;
+  --texto-tenue: #6e6252;
+  --texto-tenue-2: #9c9080;
 
-  --ambar: #ffb020;
-  --ambar-fuerte: #ff9500;
-  --verde: #35c37d;
-  --rojo: #ef4444;
+  --dorado: #96691e;
+  --dorado-fondo: #d1a03a;
+  --verde: #1e5631;
+  --verde-oscuro: #163f24;
+  --rojo: #a23b2e;
 
-  --fuente-marcador: "Big Shoulders Display", sans-serif;
-  --fuente-texto: "Archivo", sans-serif;
+  --fuente-marcador: "Fraunces", serif;
+  --fuente-texto: "Public Sans", sans-serif;
 
   --radio: 14px;
   --radio-chico: 8px;
-  --sombra: 0 8px 30px -12px rgba(0, 0, 0, 0.6);
+  --sombra: 0 10px 26px -14px rgba(35, 26, 12, 0.35);
 
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -45,7 +47,7 @@ body {
   overflow-x: hidden;
 }
 
-/* ---------- Textura de fondo: filas de tribuna + resplandor + grano ---------- */
+/* ---------- Textura de fondo: papel + rayas de siega de cancha ---------- */
 
 .fondo-textura {
   position: fixed;
@@ -53,14 +55,14 @@ body {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 900px 500px at 15% -5%, rgba(255, 176, 32, 0.14), transparent 60%),
-    radial-gradient(ellipse 700px 400px at 100% 0%, rgba(53, 195, 125, 0.08), transparent 55%),
+    radial-gradient(ellipse 900px 500px at 12% -8%, rgba(209, 160, 58, 0.16), transparent 60%),
+    radial-gradient(ellipse 700px 420px at 105% 5%, rgba(30, 86, 49, 0.1), transparent 55%),
     repeating-linear-gradient(
-      -8deg,
-      rgba(255, 255, 255, 0.015) 0px,
-      rgba(255, 255, 255, 0.015) 2px,
-      transparent 2px,
-      transparent 34px
+      100deg,
+      rgba(30, 86, 49, 0.035) 0px,
+      rgba(30, 86, 49, 0.035) 46px,
+      transparent 46px,
+      transparent 92px
     ),
     var(--bg);
 }
@@ -69,7 +71,8 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  opacity: 0.4;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
 }
 
@@ -93,27 +96,29 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding-top: 28px;
+  padding-top: 30px;
   padding-bottom: 8px;
 }
 
 .marca {
   font-family: var(--fuente-marcador);
-  font-weight: 800;
-  font-size: clamp(2.2rem, 8vw, 2.8rem);
-  line-height: 0.85;
+  font-weight: 600;
+  font-optical-sizing: auto;
+  font-size: clamp(2.1rem, 8vw, 2.6rem);
+  line-height: 0.95;
   margin: 0;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  color: var(--verde-oscuro);
 }
 
 .marca span {
-  color: var(--ambar);
-  text-shadow: 0 0 24px rgba(255, 176, 32, 0.45);
+  font-style: italic;
+  font-weight: 500;
+  color: var(--dorado);
 }
 
 .marca-tagline {
-  margin: 6px 0 0;
+  margin: 7px 0 0;
   color: var(--texto-tenue);
   font-size: 0.85rem;
   letter-spacing: 0.01em;
@@ -122,21 +127,22 @@ body {
 .btn-icono {
   background: var(--superficie);
   border: 1px solid var(--superficie-borde);
-  color: var(--texto);
+  color: var(--verde-oscuro);
   width: 42px;
   height: 42px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   cursor: pointer;
+  box-shadow: var(--sombra);
   transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
   flex-shrink: 0;
   margin-top: 4px;
 }
 
 .btn-icono:hover {
-  background: #1c222c;
-  border-color: #333c49;
+  background: #fff;
+  border-color: #cbb883;
   transform: rotate(20deg);
 }
 
@@ -164,7 +170,7 @@ body {
 .btn-flecha {
   background: var(--superficie);
   border: 1px solid var(--superficie-borde);
-  color: var(--texto);
+  color: var(--verde-oscuro);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -177,8 +183,8 @@ body {
 }
 
 .btn-flecha:hover {
-  background: #1c222c;
-  border-color: #333c49;
+  background: #fff;
+  border-color: #cbb883;
 }
 
 .fecha-display {
@@ -190,9 +196,8 @@ body {
 .fecha-texto {
   font-family: var(--fuente-marcador);
   font-weight: 600;
-  font-size: 1.15rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font-size: 1.1rem;
+  letter-spacing: 0.01em;
   display: block;
   cursor: pointer;
 }
@@ -210,7 +215,7 @@ body {
   margin-top: 4px;
   background: none;
   border: none;
-  color: var(--ambar);
+  color: var(--dorado);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -231,6 +236,7 @@ body {
   border-radius: 999px;
   padding: 4px;
   align-self: center;
+  box-shadow: var(--sombra);
 }
 
 .tab-vista {
@@ -247,8 +253,8 @@ body {
 }
 
 .tab-vista.activo {
-  background: var(--ambar);
-  color: #1a1305;
+  background: var(--verde);
+  color: #fdf8ea;
 }
 
 .tab-vista:not(.activo):hover {
@@ -258,7 +264,7 @@ body {
 /* ---------- Lista de partidos ---------- */
 
 .partidos-contenedor {
-  padding-top: 20px;
+  padding-top: 22px;
   padding-bottom: 60px;
   min-height: 40vh;
   display: flex;
@@ -274,25 +280,25 @@ body {
 
 .torneo-titulo {
   font-family: var(--fuente-marcador);
-  font-weight: 700;
-  font-size: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-style: italic;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
   color: var(--texto-tenue);
   margin: 0;
   padding-left: 14px;
-  border-left: 3px solid var(--ambar);
+  border-left: 3px solid var(--verde);
 }
 
 .torneo-titulo-hoy {
-  color: var(--ambar);
+  color: var(--verde);
 }
 
 .partido-torneo-tag {
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--texto-tenue-2);
   margin-bottom: -2px;
 }
@@ -319,7 +325,7 @@ body {
 }
 
 .partido:hover {
-  border-color: #333c49;
+  border-color: #cbb883;
 }
 
 .partido-equipos {
@@ -344,16 +350,16 @@ body {
 }
 
 .estrella {
-  color: var(--ambar);
+  color: var(--dorado);
   font-size: 0.85em;
   flex-shrink: 0;
 }
 
 .hora {
   font-family: var(--fuente-marcador);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1.05rem;
-  color: var(--ambar);
+  color: var(--verde);
   text-align: center;
   white-space: nowrap;
   padding: 0 6px;
@@ -361,12 +367,13 @@ body {
 
 .marcador {
   font-family: var(--fuente-marcador);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 1.6rem;
   display: flex;
   align-items: baseline;
   gap: 6px;
   padding: 0 6px;
+  color: var(--verde-oscuro);
 }
 
 .marcador .separador {
@@ -376,9 +383,9 @@ body {
 
 .estado-pospuesto {
   font-family: var(--fuente-marcador);
-  font-weight: 700;
-  font-size: 0.85rem;
-  text-transform: uppercase;
+  font-weight: 600;
+  font-style: italic;
+  font-size: 0.88rem;
   color: var(--rojo);
   text-align: center;
   padding: 0 6px;
@@ -388,16 +395,16 @@ body {
 .partido-canal {
   display: flex;
   justify-content: center;
-  border-top: 1px solid var(--superficie-borde);
+  border-top: 1px dashed var(--superficie-borde);
   padding-top: 10px;
 }
 
 .canal {
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--verde);
-  background: rgba(53, 195, 125, 0.1);
-  border: 1px solid rgba(53, 195, 125, 0.25);
+  color: var(--verde-oscuro);
+  background: rgba(30, 86, 49, 0.08);
+  border: 1px solid rgba(30, 86, 49, 0.22);
   padding: 4px 12px;
   border-radius: 999px;
   text-align: center;
@@ -405,7 +412,7 @@ body {
 
 .canal-vacio {
   color: var(--texto-tenue-2);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(35, 26, 12, 0.03);
   border-color: var(--superficie-borde);
 }
 
@@ -435,7 +442,7 @@ body {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(3, 4, 6, 0.65);
+  background: rgba(36, 31, 25, 0.4);
   backdrop-filter: blur(2px);
   opacity: 0;
   pointer-events: none;
@@ -476,9 +483,11 @@ body {
 
 .panel-header h2 {
   font-family: var(--fuente-marcador);
-  text-transform: uppercase;
-  font-size: 1.3rem;
+  font-weight: 600;
+  font-style: italic;
+  font-size: 1.35rem;
   margin: 0;
+  color: var(--verde-oscuro);
 }
 
 .panel-seccion {
@@ -516,7 +525,7 @@ body {
 }
 
 .checklist-item input {
-  accent-color: var(--ambar);
+  accent-color: var(--verde);
   width: 17px;
   height: 17px;
 }
@@ -538,7 +547,7 @@ body {
 
 .buscador-equipo input:focus {
   outline: none;
-  border-color: var(--ambar);
+  border-color: var(--dorado);
 }
 
 .busqueda-resultados {
@@ -560,7 +569,7 @@ body {
 }
 
 .resultado-busqueda:hover {
-  border-color: var(--ambar);
+  border-color: var(--dorado);
 }
 
 .favoritos-chips {
@@ -580,9 +589,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 176, 32, 0.1);
-  border: 1px solid rgba(255, 176, 32, 0.3);
-  color: var(--ambar);
+  background: rgba(150, 105, 30, 0.1);
+  border: 1px solid rgba(150, 105, 30, 0.3);
+  color: var(--dorado);
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 0.8rem;
@@ -591,7 +600,7 @@ body {
 }
 
 .chip:hover {
-  background: rgba(255, 176, 32, 0.18);
+  background: rgba(150, 105, 30, 0.18);
 }
 
 /* ---------- Pie ---------- */
