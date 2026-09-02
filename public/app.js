@@ -1,5 +1,6 @@
 import { supabase } from './lib/supabase-client.js';
 import { getTorneosActivos, setTorneosActivos, getFavoritos, setFavoritos } from './lib/storage.js';
+import { buscarEscudo } from './lib/escudos.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -59,7 +60,7 @@ async function cargarCatalogos() {
   // CLAUDE.md seccion 13.
   const [torneos, equipos] = await Promise.all([
     supabase.get('torneos?select=id,nombre,slug,activo_por_defecto&slug=neq.torneo-betplay&order=nombre.asc'),
-    supabase.get('equipos?select=id,nombre,slug&order=nombre.asc'),
+    supabase.get('equipos?select=id,nombre,slug,escudo_url&order=nombre.asc'),
   ]);
   state.torneos = torneos;
   state.equipos = equipos;
@@ -75,8 +76,8 @@ async function cargarPartidos() {
   const campos =
     'id,fecha,hora_local,estado,marcador_local,marcador_visitante,canal,confianza,' +
     'torneo:torneo_id(nombre,slug),' +
-    'equipo_local:equipo_local_id(id,nombre),' +
-    'equipo_visitante:equipo_visitante_id(id,nombre)';
+    'equipo_local:equipo_local_id(id,nombre,escudo_url),' +
+    'equipo_visitante:equipo_visitante_id(id,nombre,escudo_url)';
 
   let query;
 
@@ -163,9 +164,30 @@ function esFavorito(equipoId) {
   return state.favoritos.includes(equipoId);
 }
 
+// Busca y guarda el escudo de un equipo la primera vez que se favoritea, si
+// todavia no lo tiene. No bloquea la UI (se llama sin esperar el resultado) --
+// si no encuentra nada o falla la escritura, el equipo simplemente se sigue
+// mostrando con la estrella de siempre. Ver sql/003_escudos.sql.
+async function asegurarEscudo(equipoId) {
+  const equipo = state.equipos.find((e) => e.id === equipoId);
+  if (!equipo || equipo.escudo_url) return;
+
+  const url = await buscarEscudo(equipo.nombre);
+  if (!url) return;
+
+  equipo.escudo_url = url; // state.equipos es el mismo objeto que lee renderFavoritosChips
+  await supabase.patchEscudo(equipoId, url); // persiste antes de refrescar partidos (esos si van a red)
+
+  renderFavoritosChips();
+  if (state.vista === 'favoritos') renderPartidos();
+}
+
 function renderEquipo(equipo) {
-  const fav = esFavorito(equipo.id) ? '<span class="estrella" title="Favorito">&#9733;</span>' : '';
-  return `<span class="equipo">${fav}${escapeHtml(equipo.nombre)}</span>`;
+  if (!esFavorito(equipo.id)) return `<span class="equipo">${escapeHtml(equipo.nombre)}</span>`;
+  const marca = equipo.escudo_url
+    ? `<img class="equipo-escudo" src="${escapeHtml(equipo.escudo_url)}" alt="" loading="lazy" />`
+    : '<span class="estrella" title="Favorito">&#9733;</span>';
+  return `<span class="equipo">${marca}${escapeHtml(equipo.nombre)}</span>`;
 }
 
 function renderPartidoCard(p, { mostrarTorneo = false } = {}) {
@@ -285,7 +307,8 @@ function renderFavoritosChips() {
     .map((id) => {
       const eq = state.equipos.find((e) => e.id === id);
       if (!eq) return '';
-      return `<button class="chip" data-id="${id}">${escapeHtml(eq.nombre)} &times;</button>`;
+      const escudo = eq.escudo_url ? `<img class="chip-escudo" src="${escapeHtml(eq.escudo_url)}" alt="" loading="lazy" />` : '';
+      return `<button class="chip" data-id="${id}">${escudo}${escapeHtml(eq.nombre)} &times;</button>`;
     })
     .join('');
 }
@@ -390,6 +413,7 @@ function initEventos() {
     renderResultadosBusqueda('');
     renderFavoritosChips();
     if (state.vista === 'favoritos') renderPartidos();
+    asegurarEscudo(id);
   });
 
   $('#favoritos-chips').addEventListener('click', (e) => {

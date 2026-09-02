@@ -355,6 +355,13 @@ body {
   flex-shrink: 0;
 }
 
+.equipo-escudo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .hora {
   font-family: var(--fuente-marcador);
   font-weight: 600;
@@ -583,6 +590,13 @@ body {
   color: var(--texto-tenue-2);
   font-size: 0.82rem;
   margin: 0;
+}
+
+.chip-escudo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .chip {
