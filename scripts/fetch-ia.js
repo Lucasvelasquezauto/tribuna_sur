@@ -136,19 +136,30 @@ const VENTANA_DUPLICADO_DIAS = 10;
 
 /**
  * Salvaguarda contra reprogramaciones mal resueltas: si el mismo cruce
- * (mismos dos equipos, cualquier orden) ya tiene una fila 'programado' en
- * este torneo dentro de +-VENTANA_DUPLICADO_DIAS de la fecha nueva, no crear
- * una segunda fila -- mejor omitir y dejar log que arriesgarse a mostrar dos
- * fechas distintas para lo que probablemente es el mismo partido. No
- * reemplaza al prompt (seccion "Reprogramaciones" en gemini.js), es un
- * respaldo cuando la fuente no trae suficiente contexto para que el modelo
- * lo resuelva solo -- ver CLAUDE.md seccion 13, caso Nacional-Cali.
+ * (mismos dos equipos, cualquier orden) ya tiene una fila 'programado' O
+ * 'finalizado' en este torneo dentro de +-VENTANA_DUPLICADO_DIAS de la
+ * fecha nueva, no crear una segunda fila -- mejor omitir y dejar log que
+ * arriesgarse a mostrar dos fechas distintas para lo que probablemente es
+ * el mismo partido. Deliberadamente NO incluye 'pospuesto': un partido
+ * pospuesto SI puede (y debe) actualizarse con su fecha real cuando se
+ * encuentra. No reemplaza al prompt (seccion "Reprogramaciones" en
+ * gemini.js), es un respaldo cuando la fuente no trae suficiente contexto
+ * para que el modelo lo resuelva solo -- ver CLAUDE.md seccion 13, caso
+ * Nacional-Cali.
+ *
+ * 'finalizado' se agrego el 2026-09-02 tras un caso real: un relleno
+ * historico habia guardado "Boyaca Chico vs Fortaleza" y "America de Cali
+ * vs Junior" como 'finalizado' en una fecha equivocada (24 de agosto); al
+ * corregir la extraccion y volver a buscar, la fuente (correctamente esta
+ * vez) encontro la fecha real (26 de agosto) pero la salvaguarda -- que
+ * solo miraba 'programado' -- no vio el duplicado 'finalizado' existente y
+ * dejo crear una segunda fila contradictoria para el mismo cruce.
  */
 async function otraFechaPendienteParaElCruce(torneoId, equipoLocalId, equipoVisitanteId, fecha) {
   const desde = sumarDiasISO(fecha, -VENTANA_DUPLICADO_DIAS);
   const hasta = sumarDiasISO(fecha, VENTANA_DUPLICADO_DIAS);
   const filtro =
-    `select=id,fecha&torneo_id=eq.${torneoId}&estado=eq.programado&fecha=neq.${fecha}` +
+    `select=id,fecha,estado&torneo_id=eq.${torneoId}&estado=in.(programado,finalizado)&fecha=neq.${fecha}` +
     `&fecha=gte.${desde}&fecha=lte.${hasta}` +
     `&or=(and(equipo_local_id.eq.${equipoLocalId},equipo_visitante_id.eq.${equipoVisitanteId}),and(equipo_local_id.eq.${equipoVisitanteId},equipo_visitante_id.eq.${equipoLocalId}))`;
   const existentes = await select('partidos', filtro);
@@ -230,11 +241,11 @@ export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
     const equipoLocalId = await resolverEquipoId(p.equipo_local, candidatosEquipos);
     const equipoVisitanteId = await resolverEquipoId(p.equipo_visitante, candidatosEquipos);
 
-    if (estado === 'programado') {
+    if (estado === 'programado' || estado === 'finalizado') {
       const otra = await otraFechaPendienteParaElCruce(torneo.id, equipoLocalId, equipoVisitanteId, fecha);
       if (otra) {
         console.warn(
-          `[fetch-ia] omitido por posible reprogramacion sin resolver: ${p.equipo_local} vs ${p.equipo_visitante} en ${fecha} ya existe 'programado' en ${otra.fecha} (partido id ${otra.id}) -- revisar a mano cual fecha es la correcta`
+          `[fetch-ia] omitido por posible fecha duplicada/mal resuelta: ${p.equipo_local} vs ${p.equipo_visitante} en ${fecha} ya existe '${otra.estado}' en ${otra.fecha} (partido id ${otra.id}) -- revisar a mano cual fecha es la correcta`
         );
         continue;
       }
