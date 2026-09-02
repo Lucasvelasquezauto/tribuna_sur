@@ -387,7 +387,13 @@ function initEventos() {
     $('#panel-ajustes').classList.remove('abierto');
     $('#overlay-ajustes').classList.remove('mostrar');
   };
-  $('#btn-ajustes').addEventListener('click', abrirAjustes);
+  $('#btn-ajustes').addEventListener('click', () => {
+    abrirAjustes();
+    const btn = $('#btn-ajustes');
+    btn.classList.remove('girando');
+    void btn.offsetWidth; // fuerza reflow para poder reiniciar la animacion si se hace clic varias veces seguidas
+    btn.classList.add('girando');
+  });
   $('#btn-cerrar-ajustes').addEventListener('click', cerrarAjustes);
   $('#overlay-ajustes').addEventListener('click', cerrarAjustes);
 

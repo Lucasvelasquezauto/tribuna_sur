@@ -141,15 +141,55 @@ body {
 }
 
 .btn-icono-estrella {
-  color: var(--dorado);
-  font-size: 1.3rem;
-  line-height: 1;
+  background: none;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  width: auto;
+  height: auto;
+  padding: 2px;
+  animation: brilloEstrellaPulso 2.2s ease-in-out infinite;
 }
 
 .btn-icono:hover {
   background: #fff;
   border-color: #cbb883;
   transform: rotate(20deg);
+}
+
+.btn-icono-estrella:hover {
+  background: none;
+  border-color: transparent;
+  transform: scale(1.1);
+}
+
+.btn-icono-estrella.girando {
+  animation: girarEstrella 0.65s cubic-bezier(0.34, 1.56, 0.64, 1), brilloEstrellaPulso 2.2s ease-in-out infinite;
+}
+
+/* Sombra oscura debajo (efecto 3D, "levantada" de la pagina) + resplandor
+   dorado por encima (brillo), pulsando de a poco para que se sienta viva sin
+   ser una distraccion constante. */
+@keyframes brilloEstrellaPulso {
+  0%,
+  100% {
+    filter: drop-shadow(0 3px 3px rgba(58, 36, 5, 0.35)) drop-shadow(0 0 6px rgba(255, 214, 69, 0.5));
+  }
+  50% {
+    filter: drop-shadow(0 4px 4px rgba(58, 36, 5, 0.4)) drop-shadow(0 0 13px rgba(255, 189, 24, 0.85));
+  }
+}
+
+@keyframes girarEstrella {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  55% {
+    transform: rotate(200deg) scale(1.22);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
 }
 
 /* ---------- Controles: fecha + tabs ---------- */
