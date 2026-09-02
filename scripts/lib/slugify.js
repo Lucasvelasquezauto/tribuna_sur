@@ -5,6 +5,7 @@ export function slugify(nombre) {
     .normalize('NFD')
     .replace(DIACRITICS, '')
     .toLowerCase()
+    .replace(/\./g, '') // "F.C." -> "fc", no "f-c": sin esto, "Llaneros F.C." y "Llaneros FC" generaban equipos distintos
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }

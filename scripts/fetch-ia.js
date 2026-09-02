@@ -1,7 +1,7 @@
 // Fase 3/4 — extraccion via IA de partidos para los torneos sin API estructurada.
-// Flujo: descargar HTML de la fuente registrada -> limpiar a texto -> pedirle a un
-// LLM que devuelva JSON con el esquema fijo -> guardar en `partidos`.
-// Ver CLAUDE.md seccion 6.
+// Flujo: conseguir texto de la fuente (fetch plano, o renderizado si hace
+// falta JS) -> pedirle a un LLM que devuelva JSON con el esquema fijo ->
+// guardar en `partidos`. Ver CLAUDE.md seccion 6 y 13.
 //
 // Uso: node scripts/fetch-ia.js <slug-del-torneo> [YYYY-MM-DD]
 // Ej:  node scripts/fetch-ia.js liga-betplay
@@ -15,18 +15,47 @@ import { buscarPostsDimayor } from './lib/dimayor-discovery.js';
 import { esEjecucionDirecta } from './lib/cli.js';
 import { nombresParaPrompt } from './lib/torneo-aliases.js';
 import { encontrarEquipoId } from './lib/match-equipo.js';
+import { renderizarTexto } from './lib/render-page.js';
+import { FUENTE_DIMAYOR_HUB } from './lib/dimayor-hub-fuentes.js';
+import { recortarPorFecha } from './lib/recortar-por-fecha.js';
 
 // dimayor.com.co/category/programacion/ es un indice, no trae el detalle de los
 // partidos -- se resuelve via la API de busqueda de WordPress a varios posts
 // candidatos, y se prueban en orden de mas reciente a mas antiguo.
 const ES_INDICE_DIMAYOR = (url) => url.includes('dimayor.com.co/category/programacion');
 
-/** Para una fuente registrada, devuelve la lista de URLs candidatas a intentar en orden. */
-async function candidatosParaFuente(fuente, torneoNombre) {
-  if (!ES_INDICE_DIMAYOR(fuente.url)) return [fuente.url];
-  const posts = await buscarPostsDimayor(torneoNombre);
-  if (posts.length === 0) console.log('[fetch-ia] busqueda en dimayor.com.co sin resultados para este torneo');
-  return posts.map((p) => p.url);
+/**
+ * Arma la lista ordenada de candidatos a intentar para extraer partidos:
+ * primero el hub de Dimayor renderizado (si el torneo tiene uno registrado --
+ * Liga/Torneo/Copa Betplay, ver CLAUDE.md seccion 13, es la fuente mas
+ * completa y confiable que se encontro), despues las fuentes de
+ * `fuentes_por_torneo` en orden de prioridad (resolviendo el indice de
+ * Dimayor a posts concretos si aparece entre ellas).
+ */
+async function candidatosDeExtraccion(torneoSlug, torneoNombre, fuentesDb) {
+  const candidatos = [];
+
+  const hub = FUENTE_DIMAYOR_HUB[torneoSlug];
+  if (hub) {
+    candidatos.push({
+      etiqueta: `hub Dimayor (renderizado): ${hub.url}`,
+      obtenerTexto: () => renderizarTexto(hub.url, { seleccionarTodasLasJornadas: hub.seleccionarTodasLasJornadas }),
+    });
+  }
+
+  for (const fuente of fuentesDb) {
+    if (ES_INDICE_DIMAYOR(fuente.url)) {
+      const posts = await buscarPostsDimayor(torneoNombre);
+      if (posts.length === 0) console.log('[fetch-ia] busqueda en dimayor.com.co sin resultados para este torneo');
+      for (const post of posts) {
+        candidatos.push({ etiqueta: post.url, obtenerTexto: () => fetchAsText(post.url) });
+      }
+    } else {
+      candidatos.push({ etiqueta: fuente.url, obtenerTexto: () => fetchAsText(fuente.url) });
+    }
+  }
+
+  return candidatos;
 }
 
 // Asignacion de proveedor por grupo de torneos (CLAUDE.md seccion 6).
@@ -81,40 +110,32 @@ export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
   const [torneo] = await select('torneos', `select=id,nombre,slug&slug=eq.${torneoSlug}`);
   if (!torneo) throw new Error(`Torneo "${torneoSlug}" no existe en la tabla torneos`);
 
-  const fuentes = await select(
+  const fuentesDb = await select(
     'fuentes_por_torneo',
     `select=url,prioridad&torneo_id=eq.${torneo.id}&activo=eq.true&order=prioridad.asc`
   );
-  if (fuentes.length === 0) throw new Error(`Sin fuentes activas para ${torneoSlug} en fuentes_por_torneo`);
 
-  console.log(`[fetch-ia] torneo=${torneoSlug} fecha=${fecha} proveedor=${proveedor} fuentes=${fuentes.length}`);
+  const candidatos = await candidatosDeExtraccion(torneoSlug, torneo.nombre, fuentesDb);
+  if (candidatos.length === 0) throw new Error(`Sin fuentes para ${torneoSlug}`);
+
+  console.log(`[fetch-ia] torneo=${torneoSlug} fecha=${fecha} proveedor=${proveedor} candidatos=${candidatos.length}`);
   await marcarFetchJob(torneo.id, fecha, 'en_curso');
 
   let partidosExtraidos = [];
   let ultimoError = null;
+  const nombres = nombresParaPrompt(torneoSlug, torneo.nombre);
 
-  fuentesLoop: for (const fuente of fuentes) {
-    console.log(`[fetch-ia] intentando fuente (prioridad ${fuente.prioridad}): ${fuente.url}`);
-    let candidatos;
+  for (const c of candidatos) {
     try {
-      candidatos = await candidatosParaFuente(fuente, torneo.nombre);
+      console.log(`[fetch-ia] intentando: ${c.etiqueta}`);
+      let texto = await c.obtenerTexto();
+      if (texto.length > 20000) texto = recortarPorFecha(texto, fecha); // paginas de temporada completa (hubs de Dimayor)
+      partidosExtraidos = await extraer(texto, fecha, nombres);
+      console.log(`[fetch-ia]   ${partidosExtraidos.length} partido(s) extraidos`);
+      if (partidosExtraidos.length > 0) break;
     } catch (err) {
       ultimoError = err;
-      console.error(`[fetch-ia] no se pudo resolver candidatos para ${fuente.url}:`, err.message);
-      continue;
-    }
-
-    for (const url of candidatos) {
-      try {
-        if (url !== fuente.url) console.log(`[fetch-ia]   probando candidato: ${url}`);
-        const texto = await fetchAsText(url);
-        partidosExtraidos = await extraer(texto, fecha, nombresParaPrompt(torneoSlug, torneo.nombre));
-        console.log(`[fetch-ia]   ${partidosExtraidos.length} partido(s) extraidos`);
-        if (partidosExtraidos.length > 0) break fuentesLoop; // encontro datos, no hace falta seguir probando
-      } catch (err) {
-        ultimoError = err;
-        console.error(`[fetch-ia]   ${url} fallo:`, err.message);
-      }
+      console.error(`[fetch-ia]   ${c.etiqueta} fallo:`, err.message);
     }
   }
 
