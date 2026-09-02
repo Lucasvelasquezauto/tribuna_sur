@@ -70,7 +70,10 @@ export async function fetchCanal(torneoSlug, fecha = bogotaDateStr(new Date())) 
     const partido = porParDeEquipos.get(`${idLocal}:${idVisitante}`);
     if (!partido) continue; // el extraido no corresponde a ninguno de los partidos ya guardados
 
-    await patch('partidos', `id=eq.${partido.id}`, { canal: p.canal });
+    // football-data.org ya dio hora/marcador y la IA ahora confirma el canal
+    // de forma independiente para el mismo partido -- eso es exactamente la
+    // "confianza confirmada" de CLAUDE.md seccion 7.
+    await patch('partidos', `id=eq.${partido.id}`, { canal: p.canal, confianza: 'confirmado' });
     actualizados++;
     console.log(`[fetch-canal] canal actualizado: ${p.equipo_local} vs ${p.equipo_visitante} -> ${p.canal}`);
   }

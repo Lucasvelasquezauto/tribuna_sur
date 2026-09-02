@@ -392,6 +392,13 @@ body {
   border-color: var(--superficie-borde);
 }
 
+.marca-sin-confirmar {
+  color: var(--texto-tenue-2);
+  font-size: 0.5rem;
+  vertical-align: middle;
+  cursor: help;
+}
+
 .estado-vacio,
 .cargando,
 .estado-error {

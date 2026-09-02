@@ -56,7 +56,7 @@ async function cargarCatalogos() {
 
 async function cargarPartidos() {
   const campos =
-    'id,hora_local,estado,marcador_local,marcador_visitante,canal,' +
+    'id,hora_local,estado,marcador_local,marcador_visitante,canal,confianza,' +
     'torneo:torneo_id(nombre,slug),' +
     'equipo_local:equipo_local_id(id,nombre),' +
     'equipo_visitante:equipo_visitante_id(id,nombre)';
@@ -73,7 +73,38 @@ async function cargarPartidos() {
     query += `&torneo_id=in.(${idsActivos.join(',')})`;
   }
 
-  return supabase.get(query);
+  const partidos = await supabase.get(query);
+  return aplicarOverrides(partidos);
+}
+
+// Fase 7 -- una correccion manual (overrides_manuales) vale por encima de lo
+// que diga `partidos`. Se aplica aca, del lado del cliente: la tabla ya es
+// publica (RLS de solo lectura, ver CLAUDE.md seccion 7/13), y mantener el
+// merge visible en el frontend es mas simple que una vista SQL para este
+// volumen de datos.
+const CAMPOS_OVERRIDEABLES = new Set(['canal', 'hora_local', 'estado', 'marcador_local', 'marcador_visitante']);
+
+async function aplicarOverrides(partidos) {
+  if (partidos.length === 0) return partidos;
+  const ids = partidos.map((p) => p.id).join(',');
+  const overrides = await supabase.get(`overrides_manuales?select=partido_id,campo,valor&partido_id=in.(${ids})`);
+  if (overrides.length === 0) return partidos;
+
+  const porPartido = new Map();
+  for (const o of overrides) {
+    if (!CAMPOS_OVERRIDEABLES.has(o.campo)) continue;
+    if (!porPartido.has(o.partido_id)) porPartido.set(o.partido_id, {});
+    porPartido.get(o.partido_id)[o.campo] = o.valor;
+  }
+
+  return partidos.map((p) => {
+    const cambios = porPartido.get(p.id);
+    if (!cambios) return p;
+    const corregido = { ...p, ...cambios, _corregido: true };
+    if ('marcador_local' in cambios) corregido.marcador_local = Number(cambios.marcador_local);
+    if ('marcador_visitante' in cambios) corregido.marcador_visitante = Number(cambios.marcador_visitante);
+    return corregido;
+  });
 }
 
 function agruparPorTorneo(partidos) {
@@ -109,6 +140,14 @@ function renderPartidoCard(p) {
     ? `<span class="canal">${escapeHtml(p.canal)}</span>`
     : `<span class="canal canal-vacio">Canal por confirmar</span>`;
 
+  // Indicador sutil para datos sin confirmar entre dos fuentes independientes
+  // (CLAUDE.md seccion 7). Un dato corregido a mano (override) se considera
+  // confiable sin importar el campo `confianza` original.
+  const sinConfirmar =
+    !p._corregido && p.confianza === 'sin_confirmar'
+      ? '<span class="marca-sin-confirmar" title="Dato sin confirmar por una segunda fuente">&#9679;</span>'
+      : '';
+
   return `
     <li class="partido">
       <div class="partido-equipos">
@@ -116,7 +155,7 @@ function renderPartidoCard(p) {
         ${centro}
         ${renderEquipo(p.equipo_visitante)}
       </div>
-      <div class="partido-canal">${canal}</div>
+      <div class="partido-canal">${canal}${sinConfirmar}</div>
     </li>`;
 }
 
