@@ -125,3 +125,19 @@ export function fechaEnEspanol(fechaISO) {
 export function queryDescubrimiento(nombreTorneo, fechaISO) {
   return `${nombreTorneo} Colombia partidos ${fechaEnEspanol(fechaISO)} hora canal television reprogramacion cambio de horario`;
 }
+
+// Copa Betplay en fase eliminatoria (octavos, cuartos, etc.) tiene un numero
+// FIJO y conocido de cruces por fase -- en vez de 14 busquedas ancladas a una
+// fecha (que fallan seguido, ver CLAUDE.md seccion 13, "hibrida por fase"),
+// una sola busqueda del cuadro completo de la fase trae los 8 cruces (ida y
+// vuelta, con fecha propia cada uno) en una o dos fuentes. Se usa como
+// respaldo SOLO cuando la busqueda por fecha no encuentra nada (no en cada
+// fecha, para no duplicar el gasto de creditos de Tavily en los dias que ya
+// funcionan bien).
+//
+// MANTENIMIENTO: "octavos de final" hay que actualizarlo a mano segun avance
+// el torneo (cuartos de final, semifinal, final) -- no hay forma automatica
+// de saber en que fase esta Copa Betplay sin otra fuente aparte.
+export function queryCuadroCopaBetplay() {
+  return 'Copa Betplay Colombia 2026 octavos de final programacion completa todos los partidos fecha hora canal';
+}

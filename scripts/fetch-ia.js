@@ -18,7 +18,7 @@ import { encontrarEquipoId } from './lib/match-equipo.js';
 import { renderizarTexto } from './lib/render-page.js';
 import { FUENTE_DIMAYOR_HUB } from './lib/dimayor-hub-fuentes.js';
 import { recortarPorFecha } from './lib/recortar-por-fecha.js';
-import { buscarTextoTavily, queryDescubrimiento } from './lib/tavily.js';
+import { buscarTextoTavily, queryDescubrimiento, queryCuadroCopaBetplay } from './lib/tavily.js';
 
 // Liga/Copa Betplay: Tavily agrega varias fuentes de prensa/oficiales
 // independientes para la misma fecha (en vez de depender de una sola pagina),
@@ -50,6 +50,21 @@ async function candidatosDeExtraccion(torneoSlug, torneoNombre, fuentesDb, fecha
     candidatos.push({
       etiqueta: `Tavily: "${query}"`,
       obtenerTexto: () => buscarTextoTavily(query),
+    });
+  }
+
+  // Copa Betplay en fase eliminatoria: si la busqueda por fecha no encuentra
+  // nada, un segundo intento buscando el CUADRO COMPLETO de la fase (no
+  // anclado a una fecha) suele traer los cruces con ida/vuelta ya definidos
+  // en una sola fuente -- ver CLAUDE.md seccion 13, idea del usuario
+  // ("busqueda hibrida" en vez de solo por fecha). Solo se intenta aca (no
+  // en cada fecha) para no duplicar el gasto de creditos de Tavily en los
+  // dias que la busqueda por fecha ya resuelve bien.
+  if (torneoSlug === 'copa-betplay') {
+    const queryCuadro = queryCuadroCopaBetplay();
+    candidatos.push({
+      etiqueta: `Tavily (cuadro completo): "${queryCuadro}"`,
+      obtenerTexto: () => buscarTextoTavily(queryCuadro),
     });
   }
 
