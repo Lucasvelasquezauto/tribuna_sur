@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       # continue-on-error en cada paso: si un torneo falla (fuente caida, cuota
       # agotada, etc.) no debe bloquear a los otros dos. Ver CLAUDE.md seccion 10.
       - name: Liga Betplay

@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Champions League, Premier League, LaLiga, Bundesliga
         run: node scripts/fetch-football-data.js
         env:
