@@ -14,6 +14,7 @@ import { extraerPartidosConOpenRouter } from './lib/openrouter.js';
 import { buscarPostsDimayor } from './lib/dimayor-discovery.js';
 import { esEjecucionDirecta } from './lib/cli.js';
 import { nombresParaPrompt } from './lib/torneo-aliases.js';
+import { encontrarEquipoId } from './lib/match-equipo.js';
 
 // dimayor.com.co/category/programacion/ es un indice, no trae el detalle de los
 // partidos -- se resuelve via la API de busqueda de WordPress a varios posts
@@ -40,10 +41,24 @@ const PROVEEDOR_POR_TORNEO = {
 
 const ESTADOS_VALIDOS = new Set(['programado', 'finalizado', 'pospuesto']);
 
-async function upsertEquipo(nombre) {
+/**
+ * Resuelve el id de un equipo por nombre. Primero intenta por slug exacto;
+ * si no hay, busca por tokens entre los equipos YA CONOCIDOS de este torneo
+ * (`candidatos`, mutado en el sitio) antes de crear uno nuevo -- evita que
+ * "Envigado" y "Envigado FC" (variantes de nombre entre corridas) terminen
+ * como dos equipos y dos partidos distintos. Ver CLAUDE.md seccion 13.
+ */
+async function resolverEquipoId(nombre, candidatos) {
   const slug = slugify(nombre);
-  const [row] = await upsert('equipos', [{ nombre, slug }], 'slug');
-  return row.id;
+  const [exacto] = await select('equipos', `select=id&slug=eq.${slug}`);
+  if (exacto) return exacto.id;
+
+  const idFuzzy = encontrarEquipoId(nombre, candidatos);
+  if (idFuzzy) return idFuzzy;
+
+  const [nuevo] = await upsert('equipos', [{ nombre, slug }], 'slug');
+  candidatos.push({ id: nuevo.id, nombre });
+  return nuevo.id;
 }
 
 async function marcarFetchJob(torneoId, fecha, estado) {
@@ -109,6 +124,10 @@ export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
     return;
   }
 
+  const candidatosEquipos = (
+    await select('equipos_torneos', `select=equipo:equipo_id(id,nombre)&torneo_id=eq.${torneo.id}`)
+  ).map((c) => c.equipo);
+
   const filas = [];
   for (const p of partidosExtraidos) {
     if (!p.equipo_local || !p.equipo_visitante) {
@@ -116,8 +135,8 @@ export async function fetchIa(torneoSlug, fecha = bogotaDateStr(new Date())) {
       continue;
     }
     const estado = ESTADOS_VALIDOS.has(p.estado) ? p.estado : 'programado';
-    const equipoLocalId = await upsertEquipo(p.equipo_local);
-    const equipoVisitanteId = await upsertEquipo(p.equipo_visitante);
+    const equipoLocalId = await resolverEquipoId(p.equipo_local, candidatosEquipos);
+    const equipoVisitanteId = await resolverEquipoId(p.equipo_visitante, candidatosEquipos);
     await upsert(
       'equipos_torneos',
       [
