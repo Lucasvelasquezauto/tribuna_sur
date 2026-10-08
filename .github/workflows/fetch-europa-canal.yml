@@ -1,8 +1,9 @@
 name: Fetch Europa (canal en Colombia)
 
+# PAUSADO (2026-10-08): proyecto en pausa. Para reactivar, descomentar `schedule`.
 on:
-  schedule:
-    - cron: '30 9 * * *' # 04:30 America/Bogota (UTC-5) -- despues de fetch-europa-fixtures
+  # schedule:
+  #   - cron: '30 9 * * *' # 04:30 America/Bogota (UTC-5) -- despues de fetch-europa-fixtures
   workflow_dispatch:
 
 jobs:

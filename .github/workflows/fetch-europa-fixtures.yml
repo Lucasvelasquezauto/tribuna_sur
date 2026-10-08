@@ -1,8 +1,9 @@
 name: Fetch Europa (fixtures football-data.org)
 
+# PAUSADO (2026-10-08): proyecto en pausa. Para reactivar, descomentar `schedule`.
 on:
-  schedule:
-    - cron: '0 9 * * *' # 04:00 America/Bogota (UTC-5)
+  # schedule:
+  #   - cron: '0 9 * * *' # 04:00 America/Bogota (UTC-5)
   workflow_dispatch:
 
 jobs:

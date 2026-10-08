@@ -3,9 +3,10 @@ name: Fetch equipos (roster de favoritos)
 # Corre una vez al mes: los planteles/clasificados cambian poco durante la
 # temporada, no hace falta mas frecuencia que esta. Ver CLAUDE.md seccion 13.
 
+# PAUSADO (2026-10-08): proyecto en pausa. Para reactivar, descomentar `schedule`.
 on:
-  schedule:
-    - cron: '13 10 1 * *' # dia 1 de cada mes, 05:13 America/Bogota (UTC-5)
+  # schedule:
+  #   - cron: '13 10 1 * *' # dia 1 de cada mes, 05:13 America/Bogota (UTC-5)
   workflow_dispatch:
 
 jobs:
