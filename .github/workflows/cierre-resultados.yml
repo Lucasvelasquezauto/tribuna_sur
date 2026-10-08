@@ -11,9 +11,11 @@ name: Cierre de resultados
 # 'programado' con la hora + 2h ya pasada, no llama a ninguna fuente externa
 # (ver scripts/cierre-resultados.js).
 
+# PAUSADO (2026-10-08): el cron fallaba a diario y no es prioritario. Para
+# reactivarlo, descomentar el bloque `schedule`. Sigue disponible a mano.
 on:
-  schedule:
-    - cron: '7 12-23,0-4 * * *'
+  # schedule:
+  #   - cron: '7 12-23,0-4 * * *'
   workflow_dispatch:
 
 jobs:
